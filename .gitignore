@@ -1,1 +1,7 @@
 .DS_Store
+
+# Godot 4: editor cache and imported resources (regenerated on project open)
+.godot/
+
+# Godot: Android build template (reinstalled from the editor)
+godot/android/
