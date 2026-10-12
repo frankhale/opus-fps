@@ -4,7 +4,9 @@ extends CharacterBody3D
 ## gives chase, holding a preferred distance while strafing. It telegraphs each
 ## attack (the eye glows and whines) before spitting a slow, dodgeable bolt.
 ## Shots flash it red and knock it back; when killed it bursts, drops loot and
-## respawns at home a while later (out of the player's sight).
+## respawns at home a while later (out of the player's sight). Its rigged tentacles
+## are animated procedurally: a wave runs down each one, they trail behind as it
+## moves, flare out while it charges a shot and twitch when it's hit.
 
 const BOLT := preload("res://weapons/enemy_eye_bolt.tres")
 const MODEL := preload("res://assets/enemies/enemy_floating_eye.glb")
@@ -59,6 +61,12 @@ var _strafe_dir := 1.0
 var _hurt_cooldown := 0.0
 var _t := 0.0
 var _audio: AudioStreamPlayer3D
+var _skeleton: Skeleton3D
+## One entry per tentacle: {"bones": [bone indices, root first], "radial": outward
+## direction in skeleton space, "phase": wave offset}.
+var _tentacles: Array[Dictionary] = []
+## Smoothed velocity in skeleton space, so the tentacles trail behind smoothly.
+var _drag := Vector3.ZERO
 
 
 func _ready() -> void:
@@ -78,6 +86,7 @@ func _ready() -> void:
 	add_child(_model)
 	for g in _model.find_children("*", "GeometryInstance3D", true, false):
 		_meshes.append(g)
+	_setup_tentacles()
 	_flash = StandardMaterial3D.new()
 	_flash.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_flash.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
@@ -135,11 +144,64 @@ func _physics_process(delta: float) -> void:
 	# Model sway, hit flash and attack glow.
 	_model.rotation.x = sin(_t * 1.3) * 0.08
 	_model.rotation.z = sin(_t * 0.9) * 0.06
+	_animate_tentacles(delta)
 	_flash_amount = move_toward(_flash_amount, 0.0, delta * 6.0)
 	var glow := maxf(_flash_amount, _charge)
 	_flash.albedo_color = Color(glow, glow * 0.15, glow * 0.1)
 	for m in _meshes:
 		m.material_overlay = _flash if glow > 0.01 else null
+
+
+## Tentacle bones are named tentacle_<k>_<j>, j = 0 at the root (see the asset
+## generator); each tentacle's outward direction comes from where its root sits.
+func _setup_tentacles() -> void:
+	var found := _model.find_children("*", "Skeleton3D", true, false)
+	if found.is_empty():
+		return
+	_skeleton = found[0]
+	var chains := {}
+	for i in _skeleton.get_bone_count():
+		var parts := _skeleton.get_bone_name(i).split("_")
+		if parts.size() == 3 and parts[0] == "tentacle":
+			chains.get_or_add(int(parts[1]), {})[int(parts[2])] = i
+	for k in chains:
+		var bones: Array[int] = []
+		for j in range((chains[k] as Dictionary).size()):
+			bones.append(chains[k][j])
+		var root := _skeleton.get_bone_global_rest(bones[0]).origin
+		_tentacles.append({
+			"bones": bones,
+			"radial": Vector3(root.x, 0.0, root.z).normalized(),
+			"phase": randf() * TAU,
+		})
+
+
+func _animate_tentacles(delta: float) -> void:
+	if _skeleton == null:
+		return
+	var to_skeleton := _skeleton.global_basis.orthonormalized().inverse()
+	_drag = _drag.lerp(to_skeleton * velocity, 1.0 - exp(-4.0 * delta))
+	var flex := 1.6 if alerted else 1.0  # livelier once it's hunting
+	var flare := _charge * 0.35 + _flash_amount * 0.5
+	# Trail: tilt the hanging tentacles away from the direction of travel.
+	var trail := Quaternion.IDENTITY
+	var drag_flat := Vector3(_drag.x, 0.0, _drag.z)
+	if drag_flat.length() > 0.05:
+		trail = Quaternion(Vector3.DOWN.cross(-drag_flat).normalized(), clampf(drag_flat.length() * 0.09, 0.0, 0.7))
+	for t in _tentacles:
+		var radial: Vector3 = t.radial
+		var swing_axis := Vector3.DOWN.cross(radial).normalized()  # turning about it swings the tip outward
+		var bones: Array[int] = t.bones
+		for j in bones.size():
+			var wave: float = _t * (1.6 + flex * 0.6) - j * 0.9 + t.phase
+			var q := Quaternion(swing_axis, sin(wave) * 0.16 * flex + flare / bones.size() * (j + 1)) \
+				* Quaternion(radial, cos(wave * 0.7) * 0.1 * flex)
+			if j == 0:
+				q = trail * q
+			# Rotations above are in skeleton space; express them in the bone's own frame.
+			var rest := _skeleton.get_bone_global_rest(bones[j]).basis.get_rotation_quaternion()
+			var local_rest := _skeleton.get_bone_rest(bones[j]).basis.get_rotation_quaternion()
+			_skeleton.set_bone_pose_rotation(bones[j], local_rest * (rest.inverse() * q * rest))
 
 
 func _player_center() -> Vector3:

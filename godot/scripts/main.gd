@@ -4,8 +4,9 @@ extends Control
 ## Also owns mouse capture (click to capture, Esc to release), F1 toggles the PS1 filter
 ## F11 / Alt+Enter toggles fullscreen (the game starts fullscreen) and Cmd+Q quits.
 
-## Approximate vertical resolution to render at (the PS1 mostly ran at 240 lines).
-@export var target_lines := 240
+## Approximate vertical resolution to render at. The PS1 mostly ran at 240 lines;
+## 480 (its high-res mode) keeps the chunky look but with finer pixels.
+@export var target_lines := 480
 
 @onready var container: SubViewportContainer = $SubViewportContainer
 @onready var hint: Label = $HUD/Hint

@@ -76,7 +76,12 @@ def emission_mat(name, rgb):
 def import_glb(path):
     before = set(bpy.data.objects)
     bpy.ops.import_scene.gltf(filepath=path)
-    return [o for o in bpy.data.objects if o not in before]
+    new = [o for o in bpy.data.objects if o not in before]
+    # Drop the bone display shape the importer adds for a rigged model.
+    shapes = {pb.custom_shape for o in new if o.type == "ARMATURE" for pb in o.pose.bones} - {None}
+    for o in shapes:
+        o.hide_render = True
+    return [o for o in new if o not in shapes]
 
 
 def bounds(objs):

@@ -117,6 +117,10 @@ class Builder:
         self.pal = self.bm.faces.layers.int.new("pal")
         self.rng = random.Random(seed)
         self.P = Matrix.Identity(4)
+        # Optional skeleton: (name, head, tail, parent) per bone. Vertices get skin
+        # weights through weigh(); any left unweighted are bound to the first bone.
+        self.bones = []
+        self.deform = None
 
     @contextmanager
     def at(self, loc=(0, 0, 0), rot=(0, 0, 0), scale=(1, 1, 1)):
@@ -278,10 +282,60 @@ class Builder:
                 with self.at(rot=(0, 0, a)):
                     self.box((thick, seg_len, width or thick), (radius, 0, 0), color=color, glow=glow)
 
+    def tube(self, pts, radii, seg=5, color="stone", glow=False):
+        """Smooth tube through `pts` (one ring per point, radius 0 closes it to a tip).
+        Returns the rings (lists of verts) so they can be skinned."""
+        bm, m = self.bm, self.P
+        pts = [Vector(p) for p in pts]
+        rings, ref = [], None
+        for i, (p, r) in enumerate(zip(pts, radii)):
+            d = (pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]).normalized()
+            # Carry the side vector along the tube (parallel transport) so it doesn't twist.
+            ref = (ref - d * ref.dot(d)) if ref is not None else d.orthogonal()
+            ref.normalize()
+            side2 = d.cross(ref)
+            if r <= 1e-9:
+                rings.append([bm.verts.new(m @ p)])
+            else:
+                rings.append([bm.verts.new(m @ (p + (ref * math.cos(2 * math.pi * k / seg) +
+                                                     side2 * math.sin(2 * math.pi * k / seg)) * r))
+                              for k in range(seg)])
+        faces = []
+        for a, b in zip(rings, rings[1:]):
+            for k in range(seg):
+                k1 = (k + 1) % seg
+                if len(b) == 1:
+                    faces.append(bm.faces.new((a[k], a[k1], b[0])))
+                else:
+                    faces.append(bm.faces.new((a[k], a[k1], b[k1], b[k])))
+        faces.append(bm.faces.new(list(reversed(rings[0]))))
+        bmesh.ops.recalc_face_normals(bm, faces=faces)
+        self.paint([v for r in rings for v in r], color, glow)
+        return rings
+
+    # -- skinning -----------------------------------------------------------
+    def bone(self, name, head, tail, parent=None):
+        # Adding the weight layer invalidates held vertex references, so it's made
+        # here, before any skinned geometry is built.
+        if self.deform is None:
+            self.deform = self.bm.verts.layers.deform.verify()
+        self.bones.append((name, Vector(head), Vector(tail), parent))
+
+    def weigh(self, verts, weights):
+        """weights: {bone name: weight}."""
+        names = [b[0] for b in self.bones]
+        for v in verts:
+            for bone, w in weights.items():
+                v[self.deform][names.index(bone)] = w
+
     # -- output -------------------------------------------------------------
     def to_object(self, name, mats):
         bm = self.bm
         bm.normal_update()
+        if self.bones:
+            for v in bm.verts:
+                if not v[self.deform]:
+                    v[self.deform][0] = 1.0
         uvl = bm.loops.layers.uv.new("UVMap")
         for f in bm.faces:
             u0, v0, u1, v1 = cell_rect(f[self.pal])
@@ -305,7 +359,27 @@ class Builder:
             mesh.materials.append(mats[1])
         obj = bpy.data.objects.new(name, mesh)
         bpy.context.scene.collection.objects.link(obj)
+        if self.bones:
+            self._rig(obj)
         return obj
+
+    def _rig(self, obj):
+        for b in self.bones:
+            obj.vertex_groups.new(name=b[0])
+        arm = bpy.data.armatures.new(obj.name + "_rig")
+        rig = bpy.data.objects.new(obj.name + "_rig", arm)
+        bpy.context.scene.collection.objects.link(rig)
+        bpy.context.view_layer.objects.active = rig
+        bpy.ops.object.mode_set(mode="EDIT")
+        for name, head, tail, parent in self.bones:
+            eb = arm.edit_bones.new(name)
+            eb.head, eb.tail = head, tail
+            if parent:
+                eb.parent = arm.edit_bones[parent]
+                eb.use_connect = (arm.edit_bones[parent].tail - head).length < 1e-6
+        bpy.ops.object.mode_set(mode="OBJECT")
+        obj.parent = rig
+        obj.modifiers.new("Armature", "ARMATURE").object = rig
 
 
 # ---------------------------------------------------------------------------
@@ -1101,6 +1175,9 @@ def enemy_spider(b):
             b.limb(p1, p2, 0.04, 0.012, 4, {"black": 2, "dbark": 1})
 
 
+TENTACLE_BONES = 4
+
+
 @asset("enemies")
 def enemy_floating_eye(b):
     """Hovering eyeball; origin at its body's center (offset it above ground in game)."""
@@ -1112,12 +1189,27 @@ def enemy_floating_eye(b):
         with b.at(rot=(0, 90 * a + 45, 0)):
             b.box((0.05, 0.3, 0.2), (0.45, 0.1, 0), color="gunmetal")
     b.cyl(0.42, 0.42, 0.05, seg=10, loc=(0, 0, 0), rot=(0, 0, 0), color="purple")
+    # Five rigged tentacles hanging below and sweeping back. Each is one smooth tube
+    # skinned to a chain of TENTACLE_BONES bones (tentacle_<k>_0 at the root to
+    # tentacle_<k>_3 at the tip), all parented to the "body" bone, so the game can
+    # sway, curl and trail them.
+    b.bone("body", (0, 0, 0), (0, 0, 0.3))
     for k in range(5):
         a = 2 * math.pi * k / 5
         x, y = 0.18 * math.cos(a), 0.18 * math.sin(a) + 0.05
-        p0, p1, p2 = (x, y, -0.32), (x * 1.4, y * 1.4 + 0.1, -0.65), (x * 1.1, y * 1.1 + 0.25, -0.95)
-        b.limb(p0, p1, 0.045, 0.035, 4, "purple")
-        b.limb(p1, p2, 0.035, 0.0, 4, "purple")
+        p0, p1, p2 = Vector((x, y, -0.32)), Vector((x * 1.4, y * 1.4 + 0.1, -0.65)), Vector((x * 1.1, y * 1.1 + 0.25, -0.95))
+
+        def at(t):
+            return (1 - t) ** 2 * p0 + 2 * (1 - t) * t * p1 + t ** 2 * p2
+        n = TENTACLE_BONES
+        for j in range(n):
+            b.bone(f"tentacle_{k}_{j}", at(j / n), at((j + 1) / n), "body" if j == 0 else f"tentacle_{k}_{j - 1}")
+        ts = [i / (2 * n) for i in range(2 * n + 1)]   # a ring at every joint and mid-bone, then the tip
+        rings = b.tube([at(t) for t in ts], [0.045 - 0.033 * t if t < 1 else 0 for t in ts], seg=5, color="purple")
+        for i, ring in enumerate(rings):
+            j, joint = min(i // 2, n - 1), i % 2 == 0 and 0 < i < 2 * n
+            # Joint rings bend half with each neighbouring bone; the rest follow their own bone.
+            b.weigh(ring, {f"tentacle_{k}_{j - 1}": 0.5, f"tentacle_{k}_{j}": 0.5} if joint else {f"tentacle_{k}_{j}": 1.0})
 
 
 @asset("enemies")
@@ -1277,11 +1369,15 @@ def clear_objects(keep=()):
             bpy.data.objects.remove(o, do_unlink=True)
     for m in list(bpy.data.meshes):
         bpy.data.meshes.remove(m)
+    for a in list(bpy.data.armatures):
+        bpy.data.armatures.remove(a)
 
 
 def export_glb(obj, path):
     bpy.ops.object.select_all(action="DESELECT")
     obj.select_set(True)
+    if obj.parent:
+        obj.parent.select_set(True)  # the rig of a skinned model
     bpy.context.view_layer.objects.active = obj
     bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", use_selection=True,
                               export_apply=True, export_yup=True)

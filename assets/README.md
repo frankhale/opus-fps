@@ -44,4 +44,4 @@ The texture sampler is set to nearest filtering. For the full PS1 look, also tur
 - **pickups/**: origin at the base, sized about 0.3–0.7 m. Spin or bob them in game.
 - **viewmodel/**: first-person arm parts: right and left hands closed around a pistol-style grip, a left support hand for barrels and handguards, and a forearm with a jacket sleeve. Each hand's origin is the centre of what it holds. The forearm's origin is the wrist, and it runs 0.7 m toward the elbow.
 - **ammo/**: one round per ammo type (bullet, shotgun shell, rocket, plasma cell) for the HUD ammo counter. Origin at the base, standing upright, real-world scale.
-- **enemies/**: origin at the feet, facing +Z. `enemy_floating_eye` has its origin at its center, so hover it in game. Models are static meshes (not rigged).
+- **enemies/**: origin at the feet, facing +Z. `enemy_floating_eye` has its origin at its center, so hover it in game. It is the one rigged model: each of its five tentacles is skinned to a four-bone chain (`tentacle_<k>_0` at the root to `tentacle_<k>_3` at the tip) under a `body` bone, so they can be posed or animated. The other models are static meshes.
