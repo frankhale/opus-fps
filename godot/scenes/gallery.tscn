@@ -1,0 +1,7 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/main.tscn" id="1_main"]
+[ext_resource type="PackedScene" path="res://scenes/gallery_level.tscn" id="2_gallery"]
+
+[node name="Gallery" instance=ExtResource("1_main")]
+level_scene = ExtResource("2_gallery")

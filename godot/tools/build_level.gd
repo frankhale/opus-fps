@@ -45,6 +45,7 @@ const WORLD_SCALE := {
 	"terrain_cliff": 2.0, "ruins_arch": 1.6, "ruins_pillar": 1.6, "stone_wall": 1.4,
 	"watchtower": 1.5, "cabin": 1.25, "well": 1.15, "tent": 1.2, "campfire": 1.2,
 	"lamp_post": 1.3, "signpost": 1.2, "fence_wood": 1.15, "fence_post": 1.15,
+	"gas_can": 1.2,
 }
 ## Natural things also get some random size variation.
 const VARIED := ["tree_pine", "tree_pine_tall", "tree_oak", "tree_dead", "bush", "grass_tuft",
@@ -278,6 +279,7 @@ func build_village() -> void:
 	place("Village", "barrel", -6.3, 4.6)
 	place("Village", "barrel", -5.6, -7.6)
 	place("Village", "barrel_explosive", -6.0, -14.8)
+	place("Village", "gas_can", -5.3, -15.4, 30.0)
 	place("Village", "tree_oak", -14.5, -5.5, 40.0)
 	for z in [-18.0, -6.0, 6.0, 18.0]:
 		place("Village", "lamp_post", -2.6, z)
@@ -378,6 +380,10 @@ func build_outpost() -> void:
 	place(g, "conex", -22.6, 51.0, 90.0)
 	place(g, "conex", -22.5, 51.3, 93.0, ground(-22.6, 51.0) + 2.59)
 	place(g, "conex", -47.0, 56.5, 0.0)
+	# Gas cans: a few by the supply barrels and a pair at the foot of the container stack.
+	for c in [[-27.9, 44.7, 20.0], [-28.7, 44.5, -35.0], [-30.0, 45.0, 160.0], [-24.3, 49.0, 80.0],
+			[-24.4, 49.7, 100.0]]:
+		place(g, "gas_can", c[0], c[1], c[2])
 
 
 ## A lonely homestead: two cabins facing the road, a well, a fenced yard and oaks.
@@ -393,6 +399,7 @@ func build_homestead() -> void:
 	place(g, "tree_oak", 48.0, 46.0, 200.0)
 	place(g, "crate", 35.6, 55.0, 15.0)
 	place(g, "barrel", 28.6, 55.0)
+	place(g, "gas_can", 29.3, 55.5, -20.0)
 	place(g, "barrel", 47.0, 55.5)
 	place(g, "log_fallen", 40.0, 47.5, 10.0)
 	place(g, "tree_stump", 45.0, 44.5)

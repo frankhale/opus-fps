@@ -17,6 +17,8 @@ uniform float affine_strength : hint_range(0.0, 1.0) = 1.0;
 // faces collapsing into a flat, sliding smear.
 uniform float affine_max_texels = 2.0;
 uniform float emission_strength = 0.0;
+// Multiplies the palette color; below 1 darkens a surface (e.g. the ground).
+uniform float albedo_scale = 1.0;
 // Palette layout (8 x 4 swatches); used to keep affine UVs inside their swatch.
 uniform vec2 swatch_grid = vec2(8.0, 4.0);
 
@@ -50,7 +52,7 @@ void fragment() {
 		vec2 cell = floor(UV * swatch_grid);
 		uv = clamp(UV + offset * affine_strength, (cell + 0.1) / swatch_grid, (cell + 0.9) / swatch_grid);
 	}
-	vec3 c = texture(palette, uv).rgb;
+	vec3 c = texture(palette, uv).rgb * albedo_scale;
 	ALBEDO = c;
 	ROUGHNESS = 1.0;
 	METALLIC = 0.0;

@@ -117,7 +117,7 @@ offset_top = 10.0
 offset_right = 640.0
 offset_bottom = 60.0
 text = "WASD move  |  Mouse look  |  Space jump  |  Shift sprint  |  C / Ctrl crouch (slide while sprinting)
-Click fire  |  1-5 / wheel switch weapon  |  M toggle map  |  Esc release mouse  |  F1 toggle PS1 filter  |  F2 hide help  |  F11 fullscreen  |  Cmd+Q quit"
+Click fire  |  1-5 / wheel switch weapon  |  M toggle map  |  Esc release mouse  |  F1 toggle PS1 filter  |  F2 hide help  |  F11 / Cmd+Ctrl+F fullscreen  |  Cmd+1 model gallery  |  F12 screenshot  |  Cmd+Q quit"
 label_settings = SubResource("LabelSettings_hint")
 
 [node name="Minimap" type="Control" parent="HUD"]

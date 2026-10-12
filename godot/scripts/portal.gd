@@ -6,7 +6,8 @@ extends Node3D
 ## membrane from either side sends the player out of the `exit` portal, keeping their
 ## offset, facing and momentum relative to the gate: step into one portal's front and
 ## you come out of the other's front, walking away from it.
-## The frame is solid; the membrane is not. (@tool so the model shows in the editor.)
+## The frame is solid; the membrane is not. The gold runes on the ring pulse, and flare
+## with the light when someone passes through. (@tool so the model shows in the editor.)
 
 const MODEL := preload("res://assets/scenery/portal.glb")
 const HUM := preload("res://assets/sfx/portal_hum.wav")
@@ -17,6 +18,12 @@ const MEMBRANE_RADIUS := 1.45
 ## The player is tested at this point above its feet, roughly the middle of the body.
 const BODY_HEIGHT := 0.9
 const LIGHT_COLOR := Color(0.35, 0.65, 1.0)
+## The gold runes pulse PULSE_SPEED times a second, from a dim, unlit gold (albedo
+## scaled by RUNE_DIM, no glow) up to a bright glow of RUNE_GLOW, so the swing reads even
+## in daylight.
+const RUNE_DIM := 0.35
+const RUNE_GLOW := 0.8
+const PULSE_SPEED := 0.6
 
 ## The portal this one sends the player to.
 @export var exit_path: NodePath
@@ -28,6 +35,7 @@ const LIGHT_COLOR := Color(0.35, 0.65, 1.0)
 
 var _model: Node3D
 var _light: OmniLight3D
+var _rune_glow: ShaderMaterial
 var _whoosh: AudioStreamPlayer
 var _exit: Portal
 var _player: CharacterBody3D
@@ -47,6 +55,7 @@ func _ready() -> void:
 	_light.omni_range = 4.0 * model_scale
 	_light.position = Vector3(0.0, c, 0.0)
 	add_child(_light)
+	_own_rune_material()
 	if Engine.is_editor_hint():
 		return
 	_build_frame_collision()
@@ -65,6 +74,18 @@ func _ready() -> void:
 	_exit = get_node_or_null(exit_path) as Portal
 	if _exit == null:
 		push_warning("%s has no exit portal" % name)
+
+
+## Gives this portal its own copy of the shared glow material on its runes, so their
+## pulse doesn't make every other glowing thing in the level pulse too.
+func _own_rune_material() -> void:
+	for mi: MeshInstance3D in _model.find_children("*", "MeshInstance3D", true, false):
+		for i in mi.mesh.get_surface_count():
+			var mat := mi.get_active_material(i)
+			if mat is ShaderMaterial and mat.resource_name == "PS1_Glow":
+				if _rune_glow == null:
+					_rune_glow = mat.duplicate()
+				mi.set_surface_override_material(i, _rune_glow)
 
 
 ## Static trimesh collision for the stone frame only, so the membrane stays open.
@@ -90,6 +111,10 @@ func _process(delta: float) -> void:
 	_t += delta
 	_flare = maxf(_flare - delta * 1.5, 0.0)
 	_light.light_energy = 1.4 + 0.25 * sin(_t * 2.3) + 0.1 * sin(_t * 13.0) + _flare * 4.0
+	if _rune_glow:
+		var pulse := 0.5 - 0.5 * cos(_t * TAU * PULSE_SPEED)  # 0..1, smooth at both ends
+		_rune_glow.set_shader_parameter("albedo_scale", lerpf(RUNE_DIM, 1.0, pulse))
+		_rune_glow.set_shader_parameter("emission_strength", RUNE_GLOW * pulse + _flare * 3.0)
 
 
 func _physics_process(_delta: float) -> void:

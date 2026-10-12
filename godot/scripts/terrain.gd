@@ -36,9 +36,21 @@ const CHUNK := 4
 @export var outer_hill_height := 6.0
 ## How far the valley floor rises toward the cliffs at the edge, in meters.
 @export var rim_height := 7.0
+## Multiplies the tiles' palette colors, so the sunlit ground doesn't outshine the props.
+@export var ground_brightness := 0.8
+## Paint the ground in one shade per material (all grass one green, all dirt one brown,
+## all sand one tan) instead of the tiles' random per-face mix of light and dark shades.
+@export var uniform_ground := true
 
 var _noise: FastNoiseLite
 var _tile_cache := {}
+## Palette swatch remaps for `uniform_ground`, by column in the nature row (the top row
+## in Godot's UVs): dark/light grass -> grass, dark soil -> dirt, light sand -> sand.
+const UNIFORM_SWATCH := {0: 1, 2: 1, 4: 5, 7: 6}
+## On road tiles the sand flecks become dirt and the olive verges become grass too.
+const UNIFORM_ROAD_SWATCH := {0: 1, 2: 1, 3: 1, 4: 5, 6: 5, 7: 5}
+const ROAD_TILES := ["terrain_dirt_path", "terrain_path_cross"]
+var _material_cache := {}
 ## World-space triangles of each tile, kept when `keep_faces` is set (level builder).
 var keep_faces := false
 var tile_faces: Array = []  # [{min: Vector2, max: Vector2, faces: PackedVector3Array}]
@@ -170,6 +182,7 @@ func _tile_surfaces(tile_name: String) -> Array:
 	if _tile_cache.has(tile_name):
 		return _tile_cache[tile_name]
 	var surfaces := []
+	var remap: Dictionary = UNIFORM_ROAD_SWATCH if tile_name in ROAD_TILES else UNIFORM_SWATCH
 	var inst: Node3D = load("res://assets/terrain/%s.glb" % tile_name).instantiate()
 	for mi: MeshInstance3D in inst.find_children("*", "MeshInstance3D", true, false):
 		var xf := mi.transform
@@ -187,8 +200,27 @@ func _tile_surfaces(tile_name: String) -> Array:
 				var vi := idx[k] if idx.size() > 0 else k
 				ov.append(xf * v[vi])
 				on.append(xf.basis * nr[vi])
-				ouv.append(uv[vi])
-			surfaces.append([mi.get_active_material(s), ov, on, ouv])
+				ouv.append(_uniform_uv(uv[vi], remap) if uniform_ground else uv[vi])
+			surfaces.append([_ground_material(mi.get_active_material(s)), ov, on, ouv])
 	inst.free()
 	_tile_cache[tile_name] = surfaces
 	return surfaces
+
+
+## The tile material dimmed by `ground_brightness` (shared per source material).
+func _ground_material(mat: Material) -> Material:
+	if not mat is ShaderMaterial or is_equal_approx(ground_brightness, 1.0):
+		return mat
+	if not _material_cache.has(mat):
+		var dim: ShaderMaterial = mat.duplicate()
+		dim.set_shader_parameter("albedo_scale", ground_brightness)
+		_material_cache[mat] = dim
+	return _material_cache[mat]
+
+
+## Moves a UV in a dark or light ground swatch over to its base shade's swatch.
+func _uniform_uv(uv: Vector2, remap: Dictionary) -> Vector2:
+	var col := floori(uv.x * 8.0)
+	if floori(uv.y * 4.0) != 0 or not remap.has(col):
+		return uv
+	return Vector2(uv.x + (remap[col] - col) / 8.0, uv.y)

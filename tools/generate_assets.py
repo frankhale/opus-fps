@@ -1390,9 +1390,9 @@ def portal(b):
                       jit=0.012)
                 if k % 2 == 0 and not top:  # rune studs on both faces
                     for side in (-1, 1):
-                        b.box((0.16, 0.12, 0.06), (r + 0.27, 0, side * 0.27), color="cyan", glow=True)
+                        b.box((0.16, 0.12, 0.06), (r + 0.27, 0, side * 0.27), color="yellow", glow=True)
         b.box((0.7, 0.55, 0.75), (0, r + 0.32, 0), color="lstone", jit=0.02)  # keystone
-        b.box((0.26, 0.2, 0.8), (0, r + 0.36, 0), color="cyan", glow=True)
+        b.box((0.26, 0.2, 0.8), (0, r + 0.36, 0), color="yellow", glow=True)  # gold, pulsed in game
         # Membrane: a flat 20-gon disc of one-sided faces; the engine draws it double-sided.
         n = 20
         coords = [(0, 0, 0)] + [(r * math.cos(2 * math.pi * k / n), r * math.sin(2 * math.pi * k / n), 0)
@@ -1450,6 +1450,82 @@ def conex(b):
             b.box((0.06, 0.1, 0.14), (dx + 0.03, side * (W / 2 - 0.16), z), color="gunmetal")
     b.box((0.02, 0.3, 0.18), (dx + 0.06, -W / 4, 1.75), color="white")  # data plate
     b.box((0.03, 0.04, H - 0.4), (dx + 0.02, 0, H / 2), color="black")  # seam between leaves
+
+
+@asset("scenery")
+def gas_can(b):
+    """20 L steel jerry can (0.35 x 0.17 x 0.47 m body) in red, broad faces toward +-Y.
+    The filler neck sits on the chamfered top -X corner with a flexible spout clamped on;
+    three carry handles span the rest of the top."""
+    W, D, H = 0.345, 0.165, 0.43
+    ch = 0.085  # size of the chamfer under the filler neck
+    outline = [(-W / 2 + 0.02, 0), (W / 2 - 0.02, 0), (W / 2, 0.02), (W / 2, H - 0.02),
+               (W / 2 - 0.02, H), (-W / 2 + ch, H), (-W / 2, H - ch), (-W / 2, 0.02)]
+
+    def inset(pts, d):
+        return [(x - math.copysign(d, x), z + (d if z < H / 2 else -d)) for x, z in pts]
+
+    # Two nested slabs give the body softened edges; the welded seam runs round the middle.
+    b.slab(outline, D - 0.03, color="red")
+    b.slab(inset(outline, 0.015), D, color="red")
+    b.slab(inset(outline, -0.006), 0.012, color="roof")
+
+    # Raised stampings on both broad faces: the classic X, a panel where it crosses and a
+    # bar across the top. The ridge sides are darker so the pattern reads in flat colors.
+    ridge = lambda f: "red" if abs(f.normal.y) > 0.9 else "roof"
+    cx, cz, pw, ph = 0.01, 0.2, 0.08, 0.1  # center panel
+
+    def bar(sy, x0, z0, x1, z1, w=0.026):
+        dx, dz = x1 - x0, z1 - z0
+        b.box((math.hypot(dx, dz) + w, 0.018, w), ((x0 + x1) / 2, sy * (D / 2), (z0 + z1) / 2),
+              rot=(0, -math.degrees(math.atan2(dz, dx)), 0), color=ridge)
+
+    for sy in (-1, 1):
+        for x0, z0, px, pz in ((-W / 2 + 0.045, 0.045, -1, -1), (W / 2 - 0.045, 0.045, 1, -1),
+                               (-W / 2 + 0.05, H - 0.1, -1, 1), (W / 2 - 0.045, H - 0.1, 1, 1)):
+            bar(sy, x0, z0, cx + px * pw / 2, cz + pz * ph / 2)
+        bar(sy, cx - pw / 2, cz - ph / 2, cx + pw / 2, cz - ph / 2)
+        bar(sy, cx - pw / 2, cz + ph / 2, cx + pw / 2, cz + ph / 2)
+        bar(sy, cx - pw / 2, cz - ph / 2, cx - pw / 2, cz + ph / 2)
+        bar(sy, cx + pw / 2, cz - ph / 2, cx + pw / 2, cz + ph / 2)
+        bar(sy, -W / 2 + 0.06, H - 0.06, W / 2 - 0.035, H - 0.06)
+        b.cyl(0.032, 0.032, 0.016, seg=10, loc=(0.07, sy * (D / 2 + 0.002), H - 0.11),
+              rot=(90, 0, 0), color=ridge)  # capacity boss
+
+    # Three carry handles, each a bar across the top on two welded legs.
+    for x in (-0.03, 0.055, 0.14):
+        b.cyl(0.011, 0.011, D - 0.02, seg=6, loc=(x, 0, H + 0.035), rot=(90, 0, 0), color="red")
+        for sy in (-1, 1):
+            b.box((0.02, 0.018, 0.04), (x, sy * (D / 2 - 0.02), H + 0.016), color="roof")
+    b.box((0.2, 0.02, 0.018), (0.055, 0, H + 0.005), color="roof")  # spine under the handles
+
+    # Filler neck on the chamfer, pointing up and out at 45 degrees, with the clamp ring
+    # and the flipped-open cap (cam lever out) standing on its hinge at the neck's +X side.
+    n = Vector((-math.sqrt(0.5), 0, math.sqrt(0.5)))  # out of the chamfer
+    t = Vector((math.sqrt(0.5), 0, math.sqrt(0.5)))   # along the chamfer, toward +X
+    base = Vector((-W / 2 + ch / 2, 0, H - ch / 2))
+    b.cyl(0.026, 0.026, 0.045, seg=8, loc=base + n * 0.015, rot=(0, -45, 0), color="red")
+    b.cyl(0.032, 0.032, 0.014, seg=8, loc=base + n * 0.032, rot=(0, -45, 0), color="steel")
+    b.box((0.03, 0.02, 0.05), base + n * 0.03 + Vector((0, 0.035, 0)), rot=(0, -45, 0), color="chrome")  # clamp
+    hinge = base + n * 0.035 + t * 0.034
+    b.box((0.016, 0.03, 0.02), hinge, rot=(0, 45, 0), color="gunmetal")
+    b.cyl(0.033, 0.033, 0.014, seg=8, loc=hinge + n * 0.034 + t * 0.008, rot=(0, 45, 0), color="red")
+    b.cyl(0.02, 0.02, 0.006, seg=6, loc=hinge + n * 0.034, rot=(0, 45, 0), color="black")  # seal
+    b.box((0.065, 0.028, 0.012), hinge + n * 0.04 + t * 0.02, rot=(0, 45, 0), color="red")  # cam lever
+
+    # Flexible spout: a ribbed chrome hose rising out of the neck and arcing over to -X,
+    # ending in a straight nozzle that points down and out.
+    p0 = base + n * 0.035
+    ctrl = [p0, p0 + n * 0.09, p0 + Vector((-0.07, 0, 0.18)), p0 + Vector((-0.2, 0, 0.1))]
+    pts = []
+    for k in range(25):
+        t = k / 24
+        u = 1 - t
+        pts.append(ctrl[0] * u ** 3 + ctrl[1] * 3 * u * u * t + ctrl[2] * 3 * u * t * t + ctrl[3] * t ** 3)
+    b.tube(pts, [0.015 if k % 2 else 0.018 for k in range(25)], seg=6, color="chrome")
+    tip = pts[-1] + (pts[-1] - pts[-2]).normalized() * 0.09
+    b.limb(pts[-1], tip, 0.017, 0.015, seg=6, color="chrome")
+    b.limb(tip, tip + (tip - pts[-1]).normalized() * 0.01, 0.015, 0.012, seg=6, color="steel")
 
 
 # ---------------------------------------------------------------------------
