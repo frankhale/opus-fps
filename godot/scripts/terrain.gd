@@ -28,6 +28,11 @@ const CHUNK := 4
 @export var road_x := 0.0
 @export var road_z := 40.0
 @export var road_hill_scale := 0.35
+## A creek running along x at this z (NAN for none). The ground is held flat along it,
+## the rising rim too, so its water lies level and it cuts a little gorge out to the
+## cliffs at each end.
+@export var creek_z := NAN
+@export var creek_half_width := 4.0
 ## Distance over which hills fade back in around flat areas, in meters.
 @export var flat_falloff := 10.0
 @export var noise_seed := 7
@@ -80,7 +85,10 @@ func height(x: float, z: float) -> float:
 	var hills := _noise.get_noise_2d(x, z) * 1.6 * amp
 	var edge := maxf(absf(x), absf(z))
 	var rim := smoothstep(extent() - 30.0, extent() + 2.0, edge) * rim_height
-	return hills * _flatness(x, z) + rim
+	var height := hills * _flatness(x, z) + rim
+	if not is_nan(creek_z):
+		height *= smoothstep(creek_half_width, creek_half_width + flat_falloff, absf(z - creek_z))
+	return height
 
 
 ## 0 inside flat zones, 1 in open country, `road_hill_scale` on the roads.
@@ -123,6 +131,7 @@ func build() -> void:
 			var faces := PackedVector3Array()
 			for surf in _tile_surfaces(entry[0]):
 				var mat: Material = surf[0]
+				var water := _is_water(mat)
 				if not chunks[key].has(mat):
 					chunks[key][mat] = [PackedVector3Array(), PackedVector3Array(), PackedVector2Array()]
 				var out: Array = chunks[key][mat]
@@ -146,7 +155,7 @@ func build() -> void:
 						out[0].append(tri[k])
 						out[1].append(nrm)
 						out[2].append(src_uv[t + k])
-						if keep_faces:
+						if keep_faces and not water:
 							faces.append(tri[k])
 			if keep_faces:
 				tile_faces.append({"min": Vector2(origin.x - TILE / 2, origin.z - TILE / 2),
@@ -162,7 +171,8 @@ func build() -> void:
 			a[Mesh.ARRAY_TEX_UV] = chunks[key][mat][2]
 			mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, a)
 			mesh.surface_set_material(mesh.get_surface_count() - 1, mat)
-			all.append_array(chunks[key][mat][0])
+			if not _is_water(mat):  # creek water is walk-through: you wade on the bed
+				all.append_array(chunks[key][mat][0])
 		var mi := MeshInstance3D.new()
 		mi.name = "Chunk_%d_%d" % [key.x, key.y]
 		mi.mesh = mesh
@@ -191,6 +201,8 @@ func _tile_surfaces(tile_name: String) -> Array:
 			var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
 			var nr: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
 			var uv: PackedVector2Array = arr[Mesh.ARRAY_TEX_UV]
+			# Only palette surfaces get the uniform-ground remap; water UVs are flow coordinates.
+			var palette := not _is_water(mi.get_active_material(s))
 			var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX] if arr[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
 			var ov := PackedVector3Array()
 			var on := PackedVector3Array()
@@ -200,16 +212,20 @@ func _tile_surfaces(tile_name: String) -> Array:
 				var vi := idx[k] if idx.size() > 0 else k
 				ov.append(xf * v[vi])
 				on.append(xf.basis * nr[vi])
-				ouv.append(_uniform_uv(uv[vi], remap) if uniform_ground else uv[vi])
+				ouv.append(_uniform_uv(uv[vi], remap) if uniform_ground and palette else uv[vi])
 			surfaces.append([_ground_material(mi.get_active_material(s)), ov, on, ouv])
 	inst.free()
 	_tile_cache[tile_name] = surfaces
 	return surfaces
 
 
+func _is_water(mat: Material) -> bool:
+	return mat != null and mat.resource_name == "PS1_Water"
+
+
 ## The tile material dimmed by `ground_brightness` (shared per source material).
 func _ground_material(mat: Material) -> Material:
-	if not mat is ShaderMaterial or is_equal_approx(ground_brightness, 1.0):
+	if not mat is ShaderMaterial or _is_water(mat) or is_equal_approx(ground_brightness, 1.0):
 		return mat
 	if not _material_cache.has(mat):
 		var dim: ShaderMaterial = mat.duplicate()

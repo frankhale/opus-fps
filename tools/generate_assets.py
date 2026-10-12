@@ -86,9 +86,18 @@ def cell_rect(i, margin=2):
 
 
 def make_material(img, glow):
-    mat = bpy.data.materials.new({False: "PS1_Palette", True: "PS1_Glow", "portal": "PS1_Portal"}[glow])
+    mat = bpy.data.materials.new({False: "PS1_Palette", True: "PS1_Glow", "portal": "PS1_Portal",
+                                  "water": "PS1_Water"}[glow])
     nt = mat.node_tree
     bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    if glow == "water":
+        # Placeholder look (previews, other engines): flat see-through blue-green. Its UVs
+        # are flow coordinates, not palette cells, so it doesn't sample the palette.
+        bsdf.inputs["Base Color"].default_value = (*hex_rgb("#2A4252"), 1.0)
+        bsdf.inputs["Alpha"].default_value = 0.75
+        bsdf.inputs["Roughness"].default_value = 0.3
+        mat.surface_render_method = "BLENDED"
+        return mat
     tex = nt.nodes.new("ShaderNodeTexImage")
     tex.image = img
     tex.interpolation = "Closest"
@@ -112,8 +121,9 @@ def M(loc=(0, 0, 0), rot=(0, 0, 0), scale=(1, 1, 1)):
     return Matrix.LocRotScale(Vector(loc), Euler([math.radians(a) for a in rot]), Vector(scale))
 
 
-# Material slot per `glow` value: plain palette, emissive palette, portal membrane.
-MAT_INDEX = {False: 0, True: 1, "portal": 2}
+# Material slot per `glow` value: plain palette, emissive palette, portal membrane,
+# flowing water.
+MAT_INDEX = {False: 0, True: 1, "portal": 2, "water": 3}
 
 
 class Builder:
@@ -343,6 +353,12 @@ class Builder:
                     v[self.deform][0] = 1.0
         uvl = bm.loops.layers.uv.new("UVMap")
         for f in bm.faces:
+            if f.material_index == MAT_INDEX["water"]:
+                # Water UVs are model-space meters, u along the flow (+X), so the engine's
+                # shader can scroll ripples downstream however the model is turned.
+                for l in f.loops:
+                    l[uvl].uv = (l.vert.co.x, l.vert.co.y)
+                continue
             u0, v0, u1, v1 = cell_rect(f[self.pal])
             n = f.normal
             ax = max(range(3), key=lambda i: abs(n[i]))
@@ -396,6 +412,11 @@ def bump(t):
     return (math.cos(math.pi * min(max(t, 0), 1)) + 1) / 2
 
 
+def smoothstep(e0, e1, x):
+    t = min(max((x - e0) / (e1 - e0), 0.0), 1.0)
+    return t * t * (3 - 2 * t)
+
+
 def edge_window(x, y):
     return math.sin(math.pi * (x / TILE + 0.5)) * math.sin(math.pi * (y / TILE + 0.5))
 
@@ -406,21 +427,39 @@ def make_noise(rng, amp):
     return lambda x, y: amp * sum(math.sin(x * a + p) * math.sin(y * b + q) for a, b, p, q in waves) / 2
 
 
-def terrain(b, hfn, color, jit=0.07):
-    """8x8 m height-field tile. hfn must return 0 on the tile border so tiles connect."""
-    h, st, n = TILE / 2, TILE / TILE_SEG, TILE_SEG
+def terrain(b, hfn, color, jit=0.07, seg=TILE_SEG):
+    """8x8 m height-field tile. hfn must return 0 on the tile border so tiles connect.
+    A finer grid (`seg` a multiple of TILE_SEG) keeps the standard TILE_SEG spacing on
+    its y = +-4 m edges, so it meets ordinary tiles there vertex for vertex: an extra
+    vertex partway along a neighbour's edge (a T-junction) would be snapped to the pixel
+    grid on its own and open a see-through crack along the seam. (Its x edges keep the
+    fine spacing, for tiles of the same kind chained along x.)"""
+    h, st, n = TILE / 2, TILE / seg, seg
+    step = seg // TILE_SEG
     grid = []
     for j in range(n + 1):
         row = []
         for i in range(n + 1):
+            if j in (0, n) and i % step:
+                row.append(None)  # not on the coarse edge: left out
+                continue
             x, y = -h + i * st, -h + j * st
             z = hfn(x, y) + (b.rng.uniform(-jit, jit) if 0 < i < n and 0 < j < n else 0)
             row.append(b.bm.verts.new((x, y, z)))
         grid.append(row)
     for j in range(n):
         for i in range(n):
+            if step > 1 and j in (0, n - 1):
+                continue  # the edge strips are built below
             b.bm.faces.new((grid[j][i], grid[j][i + 1], grid[j + 1][i + 1], grid[j + 1][i]))
-    return b.paint([v for row in grid for v in row], color)
+    if step > 1:
+        # Edge strips: one face per coarse edge segment, fanning to the fine row inside.
+        for i0 in range(0, n, step):
+            inner = [grid[1][i] for i in range(i0, i0 + step + 1)]
+            b.bm.faces.new([grid[0][i0], grid[0][i0 + step]] + inner[::-1])
+            inner = [grid[n - 1][i] for i in range(i0, i0 + step + 1)]
+            b.bm.faces.new(inner + [grid[n][i0 + step], grid[n][i0]])
+    return b.paint([v for row in grid for v in row if v], color)
 
 
 GRASS = {"grass": 6, "dgrass": 2, "lgrass": 2}
@@ -1528,6 +1567,133 @@ def gas_can(b):
     b.limb(tip, tip + (tip - pts[-1]).normalized() * 0.01, 0.015, 0.012, seg=6, color="steel")
 
 
+def leafy(f):
+    """Foliage color: shaded underneath, mixed greens on top (as on tree_oak)."""
+    return {"dgrass": 1} if f.normal.z < -0.3 else {"grass": 3, "lgrass": 1, "dgrass": 1, "olive": 1}
+
+
+@asset("scenery")
+def bush_short(b):
+    """Knee-high leafy shrub (about 1.1 m across, 0.65 m tall): a dome of foliage clumps
+    over a few woody stems, with ragged leaf sprigs breaking up the outline and a
+    scattering of red berries."""
+    for k in range(5):  # stems splaying out from the root
+        a = 2 * math.pi * (k + b.rng.uniform(-0.2, 0.2)) / 5
+        b.limb((0, 0, 0), (0.3 * math.cos(a), 0.3 * math.sin(a), 0.3), 0.035, 0.02, 4, "dbark")
+    clumps = [((0, 0, 0.36), 0.36)]
+    for k in range(6):
+        a = 2 * math.pi * (k + b.rng.uniform(-0.25, 0.25)) / 6
+        d = b.rng.uniform(0.28, 0.38)
+        clumps.append(((d * math.cos(a), d * math.sin(a), b.rng.uniform(0.2, 0.3)), b.rng.uniform(0.2, 0.26)))
+    for loc, r in clumps:
+        b.ico(r, 1, loc=loc, scale=(1, 1, 0.85), rot=(b.rng.uniform(0, 90), 0, b.rng.uniform(0, 90)),
+              color=leafy, jit=0.05, floor=0.02)
+    for _ in range(10):  # leaf sprigs poking out of the dome
+        a, tilt = b.rng.uniform(0, 2 * math.pi), b.rng.uniform(20, 70)
+        p = Vector((0.42 * math.cos(a) * math.sin(math.radians(tilt)), 0.42 * math.sin(a) * math.sin(math.radians(tilt)),
+                    0.16 + 0.4 * math.cos(math.radians(tilt))))
+        b.box((0.16, 0.07, 0.01), p, rot=(b.rng.uniform(-30, 30), -tilt, math.degrees(a)),
+              color={"lgrass": 2, "grass": 1})
+    for _ in range(9):  # berries
+        a, z = b.rng.uniform(0, 2 * math.pi), b.rng.uniform(0.18, 0.5)
+        rr = 0.5 - 0.3 * (z - 0.18) / 0.32
+        b.ico(0.028, 1, loc=(rr * math.cos(a), rr * math.sin(a), z), color="red")
+
+
+@asset("scenery")
+def bush_tall(b):
+    """Head-high shrub (about 1.9 m across, 2 m tall): a vase of woody stems fanning out
+    from the root, leafy from knee height to a full crown, with the stems showing only
+    at the very bottom."""
+    for k in range(7):
+        a = 2 * math.pi * (k + b.rng.uniform(-0.2, 0.2)) / 7
+        out = Vector((math.cos(a), math.sin(a), 0))
+        lean = b.rng.uniform(0.45, 0.6)
+        top = out * lean + Vector((0, 0, b.rng.uniform(1.3, 1.6)))
+        mid = out * lean * 0.6 + Vector((0, 0, 0.6))
+        b.limb((0, 0, 0), mid, 0.045, 0.035, 4, "dbark")
+        b.limb(mid, top, 0.035, 0.02, 4, "dbark")
+        # Foliage all the way up each stem: small low, fuller toward the tip.
+        for t, r in ((0.25, 0.26), (0.55, 0.32), (0.8, 0.34), (1.0, 0.36)):
+            p = mid * min(t / 0.6, 1.0) if t <= 0.6 else mid.lerp(top, (t - 0.6) / 0.4)
+            c = p + out * 0.08 + Vector((0, 0, 0.08))
+            r *= b.rng.uniform(0.9, 1.1)
+            b.ico(r, 1, loc=c, rot=(b.rng.uniform(0, 90), 0, b.rng.uniform(0, 90)), color=leafy, jit=0.06,
+                  floor=0.12)
+            # A leaf sprig standing out of the clump's outer face breaks up the outline.
+            sa = a + b.rng.uniform(-0.6, 0.6)
+            b.box((0.22, 0.08, 0.01), c + Vector((math.cos(sa), math.sin(sa), 0.3)).normalized() * r * 0.95,
+                  rot=(b.rng.uniform(-30, 30), -b.rng.uniform(10, 40), math.degrees(sa)),
+                  color={"lgrass": 2, "grass": 1})
+    b.limb((0, 0, 0), (0.05, -0.04, 1.5), 0.05, 0.025, 4, "dbark")  # leader up the middle
+    for loc, r in (((0.05, -0.04, 1.55), 0.45), ((0, 0, 0.9), 0.5), ((0, 0, 0.45), 0.42)):  # fill the heart
+        b.ico(r, 1, loc=loc, rot=(30, 0, 40), color=leafy, jit=0.08)
+
+
+@asset("terrain")
+def terrain_creek(b):
+    """Creek running along X through an 8x8 m tile: a channel about 4 m wide at the water
+    line and 0.75 m deep, meandering gently between grassy banks. Its ends match from tile
+    to tile (and the side edges sit at height 0 like every tile). The water is a flat sheet
+    0.4 m down (PS1_Water, with flow UVs, for an engine's flowing-water shader); rocks of
+    every size fill it: boulders on the banks, stones breaking the surface and pebbles
+    on the gravel bed."""
+    depth, full, edge, water = 0.75, 1.25, 2.7, -0.4
+    noise = make_noise(b.rng, 0.3)
+
+    def bend(x):  # the channel's sideways meander; 0 at both ends so tiles line up
+        return 0.45 * math.sin(math.pi * x / (TILE / 2))
+
+    def h(x, y):
+        d = abs(y - bend(x))
+        channel = -depth * (1 - smoothstep(full, edge, d))
+        bed = 0.06 * math.sin(x * 2.3 + y * 1.7) * (1 - smoothstep(0, full, d))  # ripples in the gravel
+        return channel + bed + noise(x, y) * edge_window(x, y) * smoothstep(edge, edge + 0.6, d)
+
+    def color(f):
+        c = f.calc_center_median()
+        if c.z < water - 0.1:
+            return {"dsoil": 2, "dirt": 2, "dstone": 1, "sand": 1}  # gravel bed
+        if c.z < -0.08:
+            return {"dirt": 3, "dsoil": 1, "olive": 1, "stone": 1}  # wet, muddy banks
+        return GRASS
+    terrain(b, h, color, jit=0.03, seg=24)
+
+    # Water: a flat strip along the channel, tucked into the banks on both sides.
+    nx, ny, half = 16, 4, 2.15
+    coords, faces = [], []
+    for i in range(nx + 1):
+        x = -TILE / 2 + TILE * i / nx
+        for j in range(ny + 1):
+            coords.append((x, bend(x) - half + 2 * half * j / ny, water))
+    for i in range(nx):
+        for j in range(ny):
+            a = i * (ny + 1) + j
+            faces.append((a, a + ny + 1, a + ny + 2, a + 1))
+    b.poly(coords, faces, color="water", glow="water")
+
+    def rock(x, y, r, z=None, squash=0.7):
+        z = h(x, y) + r * squash * 0.35 if z is None else z
+        b.ico(r, 1, loc=(x, y, z), scale=(1.2, 1.0, squash), rot=(0, 0, b.rng.uniform(0, 180)),
+              color=lambda f: {"lgrass": 1, "olive": 2} if f.normal.z > 0.75 and z + r * squash > -0.1
+              else {"stone": 3, "lstone": 2, "dstone": 1}, jit=r * 0.18)
+
+    # Boulders on the banks, half in the water.
+    for x, side, r in ((-2.6, 1, 0.75), (1.4, -1, 0.85), (3.3, 1, 0.55), (-0.5, 1, 0.45), (-3.4, -1, 0.5)):
+        y = bend(x) + side * b.rng.uniform(1.6, 2.0)
+        rock(x, y, r)
+    # Stones breaking the surface mid-stream (the water piles up around these).
+    for x, off, r in ((-1.6, -0.3, 0.32), (0.4, 0.5, 0.28), (2.3, -0.6, 0.36), (-3.0, 0.7, 0.22), (1.1, -0.1, 0.2)):
+        rock(x, bend(x) + off, r, z=-depth + r * 0.9, squash=0.9)
+    # Cobbles and pebbles on the bed, under the water.
+    for _ in range(26):
+        x = b.rng.uniform(-3.8, 3.8)
+        y = bend(x) + b.rng.uniform(-1.5, 1.5)
+        r = b.rng.choice((0.06, 0.08, 0.1, 0.13, 0.17))
+        b.ico(r, 1, loc=(x, y, h(x, y) + r * 0.3), scale=(1.3, 1.0, 0.55), rot=(0, 0, b.rng.uniform(0, 180)),
+              color={"lstone": 2, "stone": 2, "sand": 1, "dstone": 1})
+
+
 # ---------------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------------
@@ -1555,7 +1721,7 @@ def generate():
     os.makedirs(OUT, exist_ok=True)
     clear_objects()
     img = build_palette_image()
-    mats = (make_material(img, False), make_material(img, True), make_material(img, "portal"))
+    mats = tuple(make_material(img, g) for g in (False, True, "portal", "water"))
     results = []
     for i, (cat, name, fn) in enumerate(ASSETS):
         if ONLY and ONLY not in (cat, name):

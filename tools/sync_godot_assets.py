@@ -4,7 +4,8 @@ Copy the generated asset pack into the Godot project and configure how Godot imp
 For every model this writes the [params] section of its .import file so that:
   * the GLB's PS1_Palette / PS1_Glow materials are replaced by the project's PS1 shader
     materials (godot/materials/ps1_palette.tres and ps1_glow.tres), and a portal's
-    PS1_Portal membrane by the shimmering see-through godot/materials/ps1_portal.tres
+    PS1_Portal membrane by the shimmering see-through godot/materials/ps1_portal.tres,
+    and a creek's PS1_Water sheet by the flowing godot/materials/ps1_water.tres
   * terrain and solid scenery get a static trimesh collision body
 
 Run from the repo root after regenerating the assets, then let Godot reimport:
@@ -20,10 +21,12 @@ DST = os.path.join(ROOT, "godot", "assets")
 CATEGORIES = ["terrain", "scenery", "weapons", "pickups", "enemies", "viewmodel", "ammo"]
 
 # Scenery you walk through rather than bump into.
-NO_COLLISION = {"grass_tuft", "flowers", "skull_pile", "bush"}
+NO_COLLISION = {"grass_tuft", "flowers", "skull_pile", "bush", "bush_short"}
 # Models with a walk-through membrane. scripts/portal.gd builds their frame collision
 # at runtime, since a trimesh of the whole model would make the membrane solid.
 PORTALS = {"portal"}
+# Models with a PS1_Water sheet.
+WATER = {"terrain_creek"}
 COLLIDES = {"terrain", "scenery"}
 
 PALETTE_IMPORT = """[remap]
@@ -46,6 +49,12 @@ def glb_import(name, collision):
 "PS1_Portal": {
 "use_external/enabled": true,
 "use_external/path": "res://materials/ps1_portal.tres"
+}'''
+    if name in WATER:
+        portal += ''',
+"PS1_Water": {
+"use_external/enabled": true,
+"use_external/path": "res://materials/ps1_water.tres"
 }'''
     nodes = ""
     if collision:

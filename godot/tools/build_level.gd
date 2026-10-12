@@ -7,7 +7,8 @@ extends SceneTree
 ## homestead. An overgrown graveyard and a second pond fill the north. Floating eyes
 ## guard each area, and weapons, ammo and health are spread around. A pair of linked
 ## portals joins the west end of the crossroads road to the far north end of the main
-## road. Props are dropped onto the terrain surface.
+## road. A creek crosses the south of the valley from cliff to cliff, under a bridge on
+## the main road. Props are dropped onto the terrain surface.
 ##
 ## Regenerate with:
 ##   Godot --headless --path godot --script res://tools/build_level.gd
@@ -25,6 +26,8 @@ const HALF := 11  # tiles from the center to the edge: 23 x 23 tiles
 const EXTENT := HALF * TILE + TILE / 2
 ## z of the east-west road through the crossroads.
 const ROAD_Z := 40.0
+## z of the creek running east-west across the south of the valley.
+const CREEK_Z := 64.0
 
 var level: Node3D
 var terrain: Terrain
@@ -40,7 +43,7 @@ var size_rng := RandomNumberGenerator.new()
 ## like most shooters do); things the player interacts with stay near human scale.
 const WORLD_SCALE := {
 	"tree_pine": 2.4, "tree_pine_tall": 2.2, "tree_oak": 2.0, "tree_dead": 1.8,
-	"tree_stump": 1.4, "log_fallen": 1.4, "bush": 1.5, "grass_tuft": 1.4, "flowers": 1.2,
+	"tree_stump": 1.4, "log_fallen": 1.4, "bush": 1.5, "bush_short": 1.3, "bush_tall": 1.2, "grass_tuft": 1.4, "flowers": 1.2,
 	"rock_small": 1.5, "rock_large": 1.6, "rock_cluster": 1.6,
 	"terrain_cliff": 2.0, "ruins_arch": 1.6, "ruins_pillar": 1.6, "stone_wall": 1.4,
 	"watchtower": 1.5, "cabin": 1.25, "well": 1.15, "tent": 1.2, "campfire": 1.2,
@@ -48,7 +51,7 @@ const WORLD_SCALE := {
 	"gas_can": 1.2,
 }
 ## Natural things also get some random size variation.
-const VARIED := ["tree_pine", "tree_pine_tall", "tree_oak", "tree_dead", "bush", "grass_tuft",
+const VARIED := ["tree_pine", "tree_pine_tall", "tree_oak", "tree_dead", "bush", "bush_short", "bush_tall", "grass_tuft",
 	"rock_small", "rock_large", "rock_cluster"]
 const LAMP_SCALE := 1.3
 
@@ -72,6 +75,7 @@ func _init() -> void:
 	build_ruins()
 	build_pond()
 	build_crossroads()
+	build_creek_crossing()
 	build_outpost()
 	build_homestead()
 	build_graveyard()
@@ -80,6 +84,7 @@ func _init() -> void:
 	build_pickups()
 	build_enemies()
 	build_portals()
+	clear_creek()
 	var packed := PackedScene.new()
 	var err := packed.pack(level)
 	if err == OK:
@@ -210,12 +215,15 @@ func build_terrain() -> void:
 		Vector2i(6, -6): "terrain_hill", Vector2i(-1, -6): "terrain_hill",
 	}
 	var road_j := int(ROAD_Z / TILE)
+	var creek_j := int(CREEK_Z / TILE)
 	var layout := PackedStringArray()
 	for j in range(-HALF, HALF + 1):
 		for i in range(-HALF, HALF + 1):
 			var name: String = special.get(Vector2i(i, j), "terrain_grass")
 			var rot := 0
-			if i == 0:
+			if j == creek_j:
+				name = "terrain_creek"  # flowing west to east; the main road crosses on a bridge
+			elif i == 0:
 				name = "terrain_path_cross" if j == road_j else "terrain_dirt_path"
 			elif j == road_j:
 				name = "terrain_dirt_path"
@@ -229,6 +237,7 @@ func build_terrain() -> void:
 	terrain.tiles = layout
 	terrain.road_x = 0.0
 	terrain.road_z = ROAD_Z
+	terrain.creek_z = CREEK_Z
 	# Settlements, ponds and the spawn sit on flat ground (the same areas is_clear() keeps
 	# free of random trees); the hills fade in around them.
 	terrain.flat_rects = [Rect2(-51, 43, 30, 15), Rect2(21, 43, 30, 15), Rect2(-50, -56, 27, 27),
@@ -353,6 +362,20 @@ func build_crossroads() -> void:
 	place("Crossroads", "log_fallen", 8.0, ROAD_Z + 5.0, 80.0)
 
 
+## A wooden bridge carries the main road over the creek.
+func build_creek_crossing() -> void:
+	place("Crossroads", "bridge_wood", 0.0, CREEK_Z, 0.0, 0.08, 1.3)
+
+
+## Removes the scattered nature that landed in the creek. Done afterwards rather than by
+## skipping those spots while scattering, so everything else keeps its place.
+func clear_creek() -> void:
+	for n: Node3D in groups["Nature"].get_children():
+		if absf(n.position.z - CREEK_Z) < 4.5:
+			groups["Nature"].remove_child(n)
+			n.free()
+
+
 ## Abandoned military outpost: tents, a watchtower, supply stacks, shipping containers
 ## and a fenced yard.
 func build_outpost() -> void:
@@ -451,6 +474,13 @@ func build_nature() -> void:
 	scatter("Nature", ["bush"], 200, 1.0)
 	scatter("Nature", ["grass_tuft"], 600, 0.5, false)
 	scatter("Nature", ["flowers"], 150, 0.5, false)
+	# Shrubs: tall ones as undergrowth in and around the pine groves, short berry bushes
+	# out in the open. Their own random state, so the rest of the layout stays put.
+	var state := rng.state
+	rng.seed = 4242
+	scatter("Nature", ["bush_tall"], 70, 1.5, true, 360.0, -0.1)
+	scatter("Nature", ["bush_short"], 120, 1.0)
+	rng.state = state
 
 
 func build_pickups() -> void:

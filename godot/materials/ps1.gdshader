@@ -19,6 +19,9 @@ uniform float affine_max_texels = 2.0;
 uniform float emission_strength = 0.0;
 // Multiplies the palette color; below 1 darkens a surface (e.g. the ground).
 uniform float albedo_scale = 1.0;
+// Most the per-pixel depth correction may move a pixel, as a fraction of its distance
+// (plus 3 cm). Enough to settle coplanar decals; small enough that it can't open cracks.
+uniform float depth_fix_slack = 0.01;
 // Palette layout (8 x 4 swatches); used to keep affine UVs inside their swatch.
 uniform vec2 swatch_grid = vec2(8.0, 4.0);
 
@@ -59,18 +62,24 @@ void fragment() {
 	EMISSION = c * emission_strength;
 
 	// Snapping moves vertices sideways but keeps their depth, which skews each face's
-	// depth slightly differently. Re-derive depth by casting this pixel's view ray onto
-	// the face's real plane so depth ordering stays exact.
-	vec4 far_point = INV_PROJECTION_MATRIX * vec4(SCREEN_UV * 2.0 - 1.0, 0.5, 1.0);
-	vec3 ray = normalize(far_point.xyz / far_point.w);
-	float denom = dot(face_plane.xyz, ray);
-	float t = abs(denom) > 1e-4 ? face_plane.w / denom : -1.0;
-	if (PROJECTION_MATRIX[3][3] > 0.5) {
-		t = -1.0;  // orthographic (e.g. the minimap): no snapping, so regular depth is exact
-	}
-	if (t > 0.0) {
-		vec4 p = PROJECTION_MATRIX * vec4(ray * t, 1.0);
-		DEPTH = clamp(p.z / p.w, 0.0, 1.0);
+	// depth slightly differently, so nearly coplanar surfaces (windows on walls, trim)
+	// z-fight. Re-derive depth by casting this pixel's view ray onto the face's real
+	// plane, but only let it move the rasterized depth a little: near silhouettes and on
+	// faces seen edge-on the ray can meet the plane far from the actual triangle, and an
+	// unbounded correction there punches see-through cracks along the edges.
+	// Works in view distance (d > 0 in front of the camera); for a perspective projection
+	// NDC depth = B / d - A with A = P[2][2] and B = P[3][2].
+	if (snap_scale > 0.0 && PROJECTION_MATRIX[3][3] < 0.5) {  // orthographic (minimap): no snapping, depth already exact
+		float A = PROJECTION_MATRIX[2][2];
+		float B = PROJECTION_MATRIX[3][2];
+		float raster = B / (FRAGCOORD.z + A);
+		vec4 far_point = INV_PROJECTION_MATRIX * vec4(SCREEN_UV * 2.0 - 1.0, 0.5, 1.0);
+		vec3 ray = far_point.xyz / far_point.w;
+		ray /= -ray.z;  // unit view depth, so the plane hit's distance is the depth itself
+		float denom = dot(face_plane.xyz, ray);
+		float d = abs(denom) > 1e-5 ? face_plane.w / denom : raster;
+		float slack = raster * depth_fix_slack + 0.03;
+		DEPTH = B / clamp(d, raster - slack, raster + slack) - A;
 	} else {
 		DEPTH = FRAGCOORD.z;
 	}
