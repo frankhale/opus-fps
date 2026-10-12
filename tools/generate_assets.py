@@ -14,7 +14,7 @@ Conventions (Blender Z-up, exported as glTF Y-up, 1 unit = 1 meter):
     the direction a glTF/three.js camera looks
 
 Usage:
-  Blender -b --factory-startup -P tools/generate_assets.py -- <out_dir> [--preview <dir>]
+  Blender -b --factory-startup -P tools/generate_assets.py -- <out_dir> [--preview <dir>] [--only <category>]
 """
 import bpy
 import bmesh
@@ -28,24 +28,26 @@ from mathutils import Euler, Matrix, Vector
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 OUT = os.path.abspath(argv[0] if argv else "assets")
 PREVIEW_DIR = os.path.abspath(argv[argv.index("--preview") + 1]) if "--preview" in argv else None
+ONLY = argv[argv.index("--only") + 1] if "--only" in argv else None  # build one category
 
 # ---------------------------------------------------------------------------
-# Palette: 8 columns x 4 rows. Muted, slightly warm earth tones for an outdoor
-# world, with a row of saturated accents reserved for glows, gore and pickups.
+# Palette: 8 columns x 4 rows. A somber, dusk-lit world: cold deep greens, muddy
+# earth, heavy stone and dried-blood roofs. The accent row stays saturated so blood,
+# fire, pickups and energy weapons stand out against the muted surroundings.
 # ---------------------------------------------------------------------------
 PALETTE = [
     # nature / ground
-    ("dgrass", "#2F4A2A"), ("grass", "#4E7A3A"), ("lgrass", "#86A84E"), ("olive", "#6B6B2E"),
-    ("dsoil", "#3D2B1F"), ("dirt", "#6E4B30"), ("sand", "#C2A46B"), ("lsand", "#E0CFA0"),
+    ("dgrass", "#1E2B1F"), ("grass", "#34452E"), ("lgrass", "#586B3E"), ("olive", "#4F4A2A"),
+    ("dsoil", "#251B16"), ("dirt", "#4A3628"), ("sand", "#8A7A5C"), ("lsand", "#A89A7A"),
     # stone / wood
-    ("dstone", "#3A3D42"), ("stone", "#6B6F73"), ("lstone", "#A3A39A"), ("dbark", "#4A3222"),
-    ("wood", "#8A5A34"), ("lwood", "#B88550"), ("roof", "#8E3B2E"), ("white", "#E8E6DC"),
+    ("dstone", "#24262B"), ("stone", "#4A4D52"), ("lstone", "#7A7A74"), ("dbark", "#2E211A"),
+    ("wood", "#5C4030"), ("lwood", "#806248"), ("roof", "#5E2522"), ("white", "#C8C4B8"),
     # water / sky / metal
-    ("dwater", "#1F3D5C"), ("water", "#3C6E8F"), ("sky", "#7FAFC9"), ("gunmetal", "#2B2E33"),
-    ("steel", "#5E646B"), ("chrome", "#A9B2B8"), ("brass", "#B8913A"), ("black", "#141414"),
+    ("dwater", "#141F2B"), ("water", "#2A4252"), ("sky", "#5C6E7A"), ("gunmetal", "#1E2024"),
+    ("steel", "#44484E"), ("chrome", "#868C90"), ("brass", "#8C6E30"), ("black", "#0C0C0C"),
     # accents
-    ("red", "#9C2A2A"), ("orange", "#D8762E"), ("yellow", "#E8C547"), ("toxic", "#7FD34A"),
-    ("cyan", "#4FD1D9"), ("purple", "#6A3D8C"), ("flesh", "#C98A7A"), ("bone", "#D9CBA6"),
+    ("red", "#8E1A16"), ("orange", "#C85A1E"), ("yellow", "#D6A83A"), ("toxic", "#6FB83A"),
+    ("cyan", "#3FB6C4"), ("purple", "#4E2A6A"), ("flesh", "#A8705F"), ("bone", "#BFB08C"),
 ]
 COLS, ROWS, SW = 8, 4, 16  # swatch grid and swatch size in pixels
 IDX = {name: i for i, (name, _) in enumerate(PALETTE)}
@@ -440,18 +442,19 @@ def terrain_mountain(b):
 # ============================== SCENERY ====================================
 @asset("scenery")
 def tree_pine(b):
-    b.lathe([(0.2, 0), (0.14, 1.3)], seg=6, color="dbark")
-    for r, z0, h in ((1.5, 0.8, 1.9), (1.15, 1.9, 1.7), (0.8, 3.0, 1.5)):
+    # Bare lower trunk, like a real pine, so you can walk under the branches.
+    b.lathe([(0.2, 0), (0.13, 2.1)], seg=6, color="dbark")
+    for r, z0, h in ((1.5, 1.6, 1.9), (1.15, 2.7, 1.7), (0.8, 3.8, 1.5)):
         b.cyl(r, 0, h, seg=7, loc=(0, 0, z0 + h / 2), rot=(0, 0, b.rng.uniform(0, 60)),
               color={"dgrass": 3, "grass": 1}, jit=0.08)
 
 
 @asset("scenery")
 def tree_pine_tall(b):
-    b.lathe([(0.26, 0), (0.16, 2.2)], seg=6, color="dbark")
+    b.lathe([(0.26, 0), (0.15, 3.0)], seg=6, color="dbark")
     for i in range(5):
         r, h = 1.8 - i * 0.32, 1.9
-        b.cyl(r, 0, h, seg=7, loc=(0, 0, 1.5 + i * 1.15 + h / 2), rot=(0, 0, i * 25),
+        b.cyl(r, 0, h, seg=7, loc=(0, 0, 2.3 + i * 1.15 + h / 2), rot=(0, 0, i * 25),
               color={"dgrass": 3, "grass": 1}, jit=0.1)
 
 
@@ -1156,6 +1159,63 @@ def enemy_turret(b):
         b.box((0.04, 0.04, 0.25), (0.2, 0.2, 0.3), color="gunmetal")
 
 
+# ============================== VIEWMODEL ==================================
+# First-person arms. Hands wear brown leather fingerless gloves (they separate from
+# the mostly black guns, and skin-toned fingers read clearly); sleeves are an olive
+# field jacket.
+#   * grip hands: origin at the centre of a vertical pistol-style grip (grip axis +Z,
+#     barrel/forward +Y), fingers wrapping the front, thumb over the top of the far side
+#   * support hand: origin at the centre of a horizontal barrel/handguard along +Y,
+#     palm underneath, fingers curling up the right side, thumb along the left
+#   * forearm: origin at the wrist, running along +Y toward the elbow (0.7 m)
+# Each hand's wrist sits where the forearm attaches; the game positions forearms
+# from that point toward a shoulder just off-screen.
+GLOVE = {"dbark": 3, "wood": 1}
+
+
+def grip_hand(b, s):
+    """s = +1 builds the right hand, -1 its mirror image (left)."""
+    b.box((0.03, 0.075, 0.095), (s * 0.03, -0.012, 0.0), color=GLOVE)            # palm / back of hand
+    b.box((0.05, 0.026, 0.09), (s * 0.006, -0.04, 0.0), color=GLOVE)             # web against the backstrap
+    for i, z in enumerate((0.03, 0.008, -0.014, -0.035)):
+        w = 0.018 if i < 3 else 0.015                                            # little finger is thinner
+        b.box((0.05, 0.02, w), (s * 0.008, 0.034, z), color="flesh")             # across the front
+        b.box((0.018, 0.03, w * 0.95), (-s * 0.024, 0.02, z), color="flesh")     # curled round the far side
+        b.box((0.008, 0.02, w * 0.9), (s * 0.034, 0.034, z), color=GLOVE)        # glove edge at the knuckles
+    b.box((0.02, 0.052, 0.02), (-s * 0.02, 0.004, 0.047), rot=(0, 0, s * 12), color="flesh")  # thumb
+    b.box((0.022, 0.03, 0.024), (-s * 0.006, -0.03, 0.044), color=GLOVE)          # thumb base
+    b.box((0.058, 0.055, 0.06), (s * 0.022, -0.058, -0.036), rot=(-25, 0, 0), color=GLOVE)  # wrist
+
+
+@asset("viewmodel")
+def hand_right_grip(b):
+    grip_hand(b, 1)
+
+
+@asset("viewmodel")
+def hand_left_grip(b):
+    grip_hand(b, -1)
+
+
+@asset("viewmodel")
+def hand_left_support(b):
+    b.box((0.06, 0.09, 0.022), (-0.012, 0.0, -0.042), rot=(0, -20, 0), color=GLOVE)  # palm under the barrel
+    for y in (-0.03, -0.01, 0.01, 0.03):
+        b.box((0.018, 0.017, 0.036), (0.036, y, -0.02), rot=(0, -12, 0), color="flesh")  # up the right side
+        b.box((0.016, 0.016, 0.022), (0.03, y, 0.016), rot=(0, 30, 0), color="flesh")    # curling over the top
+    b.box((0.018, 0.055, 0.018), (-0.04, 0.018, 0.0), rot=(0, 0, -8), color="flesh")    # thumb along the left
+    b.box((0.03, 0.035, 0.03), (-0.04, -0.02, -0.02), color=GLOVE)                      # thumb base
+    b.box((0.058, 0.06, 0.05), (-0.034, -0.062, -0.052), rot=(-15, 0, 0), color=GLOVE)  # wrist
+
+
+@asset("viewmodel")
+def forearm(b):
+    b.lathe([(0.032, 0.0), (0.035, 0.05)], seg=6, rot=(-90, 0, 0), color="black")       # glove cuff
+    b.lathe([(0.04, 0.04), (0.046, 0.3), (0.054, 0.7)], seg=6, rot=(-90, 0, 0),
+            color={"olive": 3, "dgrass": 1})                                              # jacket sleeve
+    b.lathe([(0.05, 0.2), (0.05, 0.26)], seg=6, rot=(-90, 0, 0), color="dgrass")          # rolled cuff band
+
+
 # ---------------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------------
@@ -1182,6 +1242,8 @@ def generate():
     mats = (make_material(img, False), make_material(img, True))
     results = []
     for i, (cat, name, fn) in enumerate(ASSETS):
+        if ONLY and cat != ONLY:
+            continue
         clear_objects()
         b = Builder(seed=1000 + i)
         fn(b)

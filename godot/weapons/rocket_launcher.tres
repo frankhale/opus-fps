@@ -1,0 +1,35 @@
+[gd_resource type="Resource" script_class="WeaponData" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/weapon_data.gd" id="1_data"]
+[ext_resource type="PackedScene" path="res://assets/weapons/weapon_rocket_launcher.glb" id="2_model"]
+[ext_resource type="AudioStream" path="res://assets/sfx/rocket.wav" id="3_sound"]
+
+[resource]
+script = ExtResource("1_data")
+display_name = "Rocket Launcher"
+slot = 4
+model = ExtResource("2_model")
+view_position = Vector3(0.22, -0.22, -0.5)
+view_rotation_degrees = Vector3(0, 3, 0)
+view_scale = 0.8
+muzzle = Vector3(0, 0.08, -0.85)
+pickup_scale = 1.2
+right_hand_position = Vector3(0, -0.03, 0.0)
+right_hand_rotation_degrees = Vector3(-18, 0, 0)
+left_hand_style = "grip"
+left_hand_position = Vector3(0, -0.02, -0.32)
+left_hand_rotation_degrees = Vector3(0, 0, 0)
+automatic = false
+fire_interval = 0.95
+projectiles_per_shot = 1
+spread_degrees = 0.3
+recoil = 3.0
+fire_sound = ExtResource("3_sound")
+ammo_type = "rockets"
+ammo_on_pickup = 5
+projectile_speed = 30.0
+projectile_size = 0.15
+projectile_color = Color(1.0, 0.5, 0.2, 1)
+glow_energy = 2.5
+smoke_trail = true
+explosion_color = Color(1.0, 0.5, 0.15, 1)

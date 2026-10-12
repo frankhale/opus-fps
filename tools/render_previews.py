@@ -21,7 +21,7 @@ from mathutils import Vector
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 ASSETS = os.path.abspath(argv[0] if argv else "assets")
 OUT = os.path.join(ASSETS, "previews")
-CATEGORIES = ["terrain", "scenery", "weapons", "pickups", "enemies"]
+CATEGORIES = ["terrain", "scenery", "weapons", "pickups", "enemies", "viewmodel"]
 THUMB, LABEL_H, HEADER_H, PAD, COLS = 384, 72, 96, 8, 5
 BG = (0.11, 0.12, 0.13)            # label / sheet background (display space)
 VIEW = {"weapons": (1.0, -0.35, 0.45), "enemies": (0.7, -1.4, 0.55)}

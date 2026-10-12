@@ -1,0 +1,143 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
+[ext_resource type="Shader" path="res://materials/ps1_post.gdshader" id="2_post"]
+[ext_resource type="PackedScene" path="res://scenes/world.tscn" id="3_world"]
+[ext_resource type="Script" path="res://scripts/minimap.gd" id="4_minimap"]
+[ext_resource type="Script" path="res://scripts/hud.gd" id="5_hud"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_post"]
+shader = ExtResource("2_post")
+shader_parameter/color_levels = 32.0
+shader_parameter/dither_strength = 1.0
+
+[sub_resource type="LabelSettings" id="LabelSettings_hint"]
+font_size = 14
+font_color = Color(1, 1, 1, 0.85)
+outline_size = 4
+outline_color = Color(0, 0, 0, 0.8)
+
+[sub_resource type="LabelSettings" id="LabelSettings_ammo"]
+font_size = 34
+outline_size = 8
+outline_color = Color(0, 0, 0, 0.85)
+
+[sub_resource type="LabelSettings" id="LabelSettings_weapon"]
+font_size = 16
+font_color = Color(0.91, 0.85, 0.7, 1)
+outline_size = 5
+outline_color = Color(0, 0, 0, 0.85)
+
+[node name="Main" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_main")
+
+[node name="SubViewportContainer" type="SubViewportContainer" parent="."]
+texture_filter = 1
+material = SubResource("ShaderMaterial_post")
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+stretch = true
+stretch_shrink = 3
+
+[node name="SubViewport" type="SubViewport" parent="SubViewportContainer"]
+handle_input_locally = false
+audio_listener_enable_3d = true
+size = Vector2i(426, 240)
+render_target_update_mode = 4
+
+[node name="World" parent="SubViewportContainer/SubViewport" instance=ExtResource("3_world")]
+
+[node name="HUD" type="CanvasLayer" parent="."]
+script = ExtResource("5_hud")
+weapons_path = NodePath("../SubViewportContainer/SubViewport/World/Player/WeaponManager")
+
+[node name="Crosshair" type="Label" parent="HUD"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -10.0
+offset_top = -12.0
+offset_right = 10.0
+offset_bottom = 12.0
+grow_horizontal = 2
+grow_vertical = 2
+text = "+"
+label_settings = SubResource("LabelSettings_hint")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Hint" type="Label" parent="HUD"]
+offset_left = 12.0
+offset_top = 10.0
+offset_right = 640.0
+offset_bottom = 60.0
+text = "WASD move  |  Mouse look  |  Space jump  |  Shift sprint  |  C / Ctrl crouch (slide while sprinting)
+Click fire  |  1-5 / wheel switch weapon  |  M toggle map  |  Esc release mouse  |  F1 toggle PS1 filter  |  F2 hide help  |  F11 fullscreen"
+label_settings = SubResource("LabelSettings_hint")
+
+[node name="Minimap" type="Control" parent="HUD"]
+texture_filter = 1
+layout_mode = 3
+anchors_preset = 0
+mouse_filter = 2
+script = ExtResource("4_minimap")
+player_path = NodePath("../../SubViewportContainer/SubViewport/World/Player")
+world_viewport_path = NodePath("../../SubViewportContainer/SubViewport")
+
+[node name="WeaponName" type="Label" parent="HUD"]
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -320.0
+offset_top = -92.0
+offset_right = -24.0
+offset_bottom = -66.0
+grow_horizontal = 0
+grow_vertical = 0
+label_settings = SubResource("LabelSettings_weapon")
+horizontal_alignment = 2
+
+[node name="AmmoCount" type="Label" parent="HUD"]
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -320.0
+offset_top = -66.0
+offset_right = -24.0
+offset_bottom = -18.0
+grow_horizontal = 0
+grow_vertical = 0
+label_settings = SubResource("LabelSettings_ammo")
+horizontal_alignment = 2
+
+[node name="Message" type="Label" parent="HUD"]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -300.0
+offset_top = -150.0
+offset_right = 300.0
+offset_bottom = -120.0
+grow_horizontal = 2
+grow_vertical = 0
+label_settings = SubResource("LabelSettings_weapon")
+horizontal_alignment = 1

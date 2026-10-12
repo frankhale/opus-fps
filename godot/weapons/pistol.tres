@@ -1,0 +1,34 @@
+[gd_resource type="Resource" script_class="WeaponData" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/weapon_data.gd" id="1_data"]
+[ext_resource type="PackedScene" path="res://assets/weapons/weapon_pistol.glb" id="2_model"]
+[ext_resource type="AudioStream" path="res://assets/sfx/pistol.wav" id="3_sound"]
+
+[resource]
+script = ExtResource("1_data")
+display_name = "Pistol"
+slot = 1
+model = ExtResource("2_model")
+view_position = Vector3(0.17, -0.17, -0.4)
+view_rotation_degrees = Vector3(0, 4, 0)
+muzzle = Vector3(0, 0.07, -0.18)
+pickup_scale = 2.4
+right_hand_position = Vector3(0, -0.02, 0.01)
+right_hand_rotation_degrees = Vector3(-14, 0, 0)
+left_hand_style = "grip"
+left_hand_position = Vector3(-0.022, -0.035, -0.012)
+left_hand_rotation_degrees = Vector3(-14, 12, 0)
+automatic = false
+fire_interval = 0.26
+projectiles_per_shot = 1
+spread_degrees = 0.6
+recoil = 1.0
+fire_sound = ExtResource("3_sound")
+ammo_type = "bullets"
+ammo_on_pickup = 24
+projectile_speed = 75.0
+projectile_size = 0.025
+projectile_color = Color(1.0, 0.8, 0.35, 1)
+glow_energy = 2.5
+smoke_trail = false
+explosion_color = Color(1.0, 0.65, 0.25, 1)
