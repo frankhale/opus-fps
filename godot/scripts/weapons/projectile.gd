@@ -11,10 +11,15 @@ const MAX_LIFETIME := 4.0
 ## front of the gun blooms into a blob at the center of the screen.
 const TRAIL_START_DISTANCE := 2.0
 
+## Physics layers (see WeaponManager): 1 world, 2 player, 4 enemies.
+const LAYER_ENEMIES := 4
+
 var data: WeaponData
 var velocity := Vector3.ZERO
 ## Bodies the projectile ignores (the shooter).
 var exclude: Array[RID] = []
+## What it can hit: world + enemies for the player's shots, world + player for enemies'.
+var collision_mask := 1 | LAYER_ENEMIES
 
 var _core: MeshInstance3D
 var _trails: Array[GPUParticles3D] = []
@@ -81,9 +86,12 @@ func _physics_process(delta: float) -> void:
 	velocity.y -= data.projectile_gravity * delta
 	var from := global_position
 	var to := from + velocity * delta
-	var query := PhysicsRayQueryParameters3D.create(from, to, 1, exclude)
+	var query := PhysicsRayQueryParameters3D.create(from, to, collision_mask, exclude)
 	var hit := get_world_3d().direct_space_state.intersect_ray(query)
 	if hit:
+		var target: Object = hit.collider
+		if target and target.has_method("take_damage"):
+			target.take_damage(data.damage, hit.position, velocity.normalized())
 		explode(hit.position, hit.normal)
 		return
 	global_position = to
@@ -104,7 +112,27 @@ func explode(at: Vector3, normal := Vector3.UP) -> void:
 	get_parent().add_child(e)
 	e.global_position = at + normal * 0.05
 	global_position = at
+	if data.splash_radius > 0.0:
+		_splash(at)
 	_finish()
+
+
+## Area damage to enemies near the impact, falling off linearly with distance.
+func _splash(at: Vector3) -> void:
+	var sphere := SphereShape3D.new()
+	sphere.radius = data.splash_radius
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = sphere
+	q.transform = Transform3D(Basis.IDENTITY, at)
+	q.collision_mask = LAYER_ENEMIES
+	q.exclude = exclude
+	for r in get_world_3d().direct_space_state.intersect_shape(q, 16):
+		var body: Object = r.collider
+		if body and body.has_method("take_damage"):
+			var d: float = (body as Node3D).global_position.distance_to(at)
+			var amount := data.splash_damage * clampf(1.0 - d / data.splash_radius, 0.0, 1.0)
+			if amount > 1.0:
+				body.take_damage(amount, at, ((body as Node3D).global_position - at).normalized())
 
 
 ## Hide the core and let the trails fade out before freeing.

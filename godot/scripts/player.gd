@@ -4,6 +4,7 @@ extends CharacterBody3D
 ##  * sprint, crouch and sprint-slide
 ##  * jump with coyote time, input buffering, variable height and snappier falls
 ##  * automatic step-up over low ledges
+##  * health: damage, healing, death and respawning at the start point
 ## Camera feel lives in camera_effects.gd and sounds in player_audio.gd; both react
 ## to this script's signals and public state.
 
@@ -11,6 +12,11 @@ signal jumped
 signal landed(impact_speed: float)
 signal slide_started
 signal slide_ended
+signal health_changed(health: float, max_health: float)
+signal damaged(amount: float, from: Vector3)
+signal died
+signal respawned
+signal message(text: String)
 
 @export_group("Speed")
 @export var walk_speed := 5.0
@@ -47,6 +53,10 @@ signal slide_ended
 @export var slide_min_speed := 3.5
 @export var slide_cooldown := 0.6
 
+@export_group("Health")
+@export var max_health := 100.0
+@export var respawn_delay := 3.0
+
 @export_group("Look")
 @export var mouse_sensitivity := 0.0022
 ## Ledges up to this height (steps, curbs, rocks) are climbed automatically.
@@ -59,6 +69,8 @@ signal slide_ended
 var is_sprinting := false
 var is_crouching := false
 var is_sliding := false
+var health := 100.0
+var dead := false
 
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 var _coyote := 0.0
@@ -66,10 +78,60 @@ var _buffer := 0.0
 var _was_on_floor := true
 var _slide_dir := Vector3.ZERO
 var _slide_timer := 0.0
+var _spawn: Transform3D
+
+
+func _ready() -> void:
+	add_to_group("player")
+	# Collide with the world and with enemies (physics layers 1 and 3).
+	collision_mask = 1 | 4
+	health = max_health
+	_spawn = global_transform
+
+
+func take_damage(amount: float, at := Vector3.ZERO, _dir := Vector3.ZERO) -> void:
+	if dead:
+		return
+	health = maxf(health - amount, 0.0)
+	health_changed.emit(health, max_health)
+	damaged.emit(amount, at)
+	var cam := head.get_node("Camera3D")
+	if cam.has_method("add_trauma"):
+		cam.add_trauma(clampf(amount / 40.0, 0.15, 0.5))
+	if health <= 0.0:
+		_die()
+
+
+## Returns false (pickup stays) when already at full health.
+func heal(amount: float) -> bool:
+	if dead or health >= max_health:
+		return false
+	health = minf(health + amount, max_health)
+	health_changed.emit(health, max_health)
+	message.emit("+%d health" % amount)
+	return true
+
+
+func _die() -> void:
+	dead = true
+	if is_sliding:
+		_end_slide()
+	died.emit()
+	get_tree().create_timer(respawn_delay).timeout.connect(_respawn)
+
+
+func _respawn() -> void:
+	global_transform = _spawn
+	velocity = Vector3.ZERO
+	head.rotation.x = 0.0
+	health = max_health
+	dead = false
+	health_changed.emit(health, max_health)
+	respawned.emit()
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not dead:
 		# screen_relative ignores the low-res viewport's scaling, so sensitivity
 		# stays the same whatever the PS1 render resolution is.
 		var d: Vector2 = event.screen_relative * mouse_sensitivity
@@ -84,10 +146,10 @@ func horizontal_speed() -> float:
 func _physics_process(delta: float) -> void:
 	var on_floor := is_on_floor()
 	_coyote = coyote_time if on_floor else maxf(_coyote - delta, 0.0)
-	_buffer = jump_buffer if Input.is_action_just_pressed("jump") else maxf(_buffer - delta, 0.0)
+	_buffer = jump_buffer if Input.is_action_just_pressed("jump") and not dead else maxf(_buffer - delta, 0.0)
 	_slide_timer = maxf(_slide_timer - delta, 0.0)
 
-	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+	var input := Vector2.ZERO if dead else Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	var wish := transform.basis * Vector3(input.x, 0.0, input.y)
 	is_sprinting = Input.is_action_pressed("sprint") and input.y < -0.5 and not is_crouching
 
@@ -156,10 +218,10 @@ func _try_jump() -> void:
 
 
 func _update_crouch(on_floor: bool, delta: float) -> void:
-	var want := Input.is_action_pressed("crouch")
+	var want := Input.is_action_pressed("crouch") or dead  # the body slumps when dead
 	if want and not is_crouching:
 		is_crouching = true
-		if on_floor and horizontal_speed() > walk_speed + 0.5 and _slide_timer <= 0.0:
+		if on_floor and not dead and horizontal_speed() > walk_speed + 0.5 and _slide_timer <= 0.0:
 			_start_slide()
 	elif not want and is_crouching and _has_headroom():
 		is_crouching = false

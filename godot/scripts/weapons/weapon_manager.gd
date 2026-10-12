@@ -324,7 +324,7 @@ func _process(delta: float) -> void:
 	_vm_camera.global_transform = camera.global_transform
 
 	_cooldown -= delta
-	if current and not _switching and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+	if current and not _switching and not player.dead and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var pressed := Input.is_action_pressed("fire") if current.automatic else Input.is_action_just_pressed("fire")
 		if pressed and _cooldown <= 0.0:
 			if ammo[current.ammo_type] > 0:
@@ -349,7 +349,7 @@ func _fire() -> void:
 	var space := player.get_world_3d().direct_space_state
 	var eye := camera.global_position
 	var forward := -camera.global_basis.z
-	var aim := PhysicsRayQueryParameters3D.create(eye, eye + forward * 400.0, 1, [player.get_rid()])
+	var aim := PhysicsRayQueryParameters3D.create(eye, eye + forward * 400.0, 1 | Projectile.LAYER_ENEMIES, [player.get_rid()])
 	var hit := space.intersect_ray(aim)
 	var target: Vector3 = hit.position if hit else eye + forward * 400.0
 

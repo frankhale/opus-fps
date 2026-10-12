@@ -7,6 +7,7 @@ extends Node
 @export var land_soft: AudioStream
 @export var land_hard: AudioStream
 @export var slide_loop: AudioStream
+@export var hurt_sound: AudioStream
 ## Mix levels: footsteps sit well under everything else, as in most shooters.
 @export var footstep_db := -14.0
 @export var jump_db := -10.0
@@ -37,6 +38,8 @@ func _ready() -> void:
 	player.landed.connect(_on_landed)
 	player.slide_started.connect(_on_slide_started)
 	player.slide_ended.connect(_on_slide_ended)
+	player.damaged.connect(func(_amount, _from): _play(hurt_sound, land_db + 2.0))
+	player.died.connect(func(): _play(hurt_sound, land_db + 6.0, 0.7))
 
 
 func _make_player(stream: AudioStream, db: float) -> AudioStreamPlayer:

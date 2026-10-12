@@ -32,3 +32,4 @@ projectile_color = Color(1.0, 0.6, 0.25, 1)
 glow_energy = 2.5
 smoke_trail = false
 explosion_color = Color(1.0, 0.55, 0.2, 1)
+damage = 12.0

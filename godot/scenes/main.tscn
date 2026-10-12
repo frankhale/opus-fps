@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Shader" path="res://materials/ps1_post.gdshader" id="2_post"]
@@ -27,6 +27,12 @@ font_size = 16
 font_color = Color(0.91, 0.85, 0.7, 1)
 outline_size = 5
 outline_color = Color(0, 0, 0, 0.85)
+
+[sub_resource type="LabelSettings" id="LabelSettings_death"]
+font_size = 56
+font_color = Color(0.85, 0.12, 0.1, 1)
+outline_size = 10
+outline_color = Color(0, 0, 0, 0.9)
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -61,6 +67,35 @@ render_target_update_mode = 4
 [node name="HUD" type="CanvasLayer" parent="."]
 script = ExtResource("5_hud")
 weapons_path = NodePath("../SubViewportContainer/SubViewport/World/Player/WeaponManager")
+
+[node name="DamageFlash" type="ColorRect" parent="HUD"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.7, 0.04, 0.02, 0.45)
+
+[node name="DeathScreen" type="ColorRect" parent="HUD"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.18, 0.0, 0.0, 0.55)
+
+[node name="Label" type="Label" parent="HUD/DeathScreen"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+text = "YOU DIED"
+label_settings = SubResource("LabelSettings_death")
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="Crosshair" type="Label" parent="HUD"]
 anchors_preset = 8
@@ -141,3 +176,14 @@ grow_horizontal = 2
 grow_vertical = 0
 label_settings = SubResource("LabelSettings_weapon")
 horizontal_alignment = 1
+
+[node name="HealthCount" type="Label" parent="HUD"]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -66.0
+offset_right = 320.0
+offset_bottom = -18.0
+grow_vertical = 0
+label_settings = SubResource("LabelSettings_ammo")

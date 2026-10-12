@@ -28,10 +28,12 @@ func _ready() -> void:
 	fire.emission_sphere_radius = 0.15 * s
 	fire.direction = Vector3.UP
 	fire.spread = 180.0
-	fire.initial_velocity_min = 0.8 * s
-	fire.initial_velocity_max = 4.5 * s
-	fire.damping_min = 1.5
-	fire.damping_max = 3.0
+	# Speed grows slower than size, so big blasts stay a dense fireball rather than
+	# flinging fire across the whole screen.
+	fire.initial_velocity_min = 0.8 * sqrt(s)
+	fire.initial_velocity_max = 3.5 * sqrt(s)
+	fire.damping_min = 2.0
+	fire.damping_max = 3.5
 	fire.gravity = Vector3(0, 1.5 * s, 0)
 	fire.scale_min = 0.35 * s
 	fire.scale_max = 0.8 * s
@@ -47,17 +49,17 @@ func _ready() -> void:
 	smoke_mat.emission_sphere_radius = 0.2 * s
 	smoke_mat.direction = Vector3.UP
 	smoke_mat.spread = 60.0
-	smoke_mat.initial_velocity_min = 0.5 * s
-	smoke_mat.initial_velocity_max = 2.0 * s
+	smoke_mat.initial_velocity_min = 0.5 * sqrt(s)
+	smoke_mat.initial_velocity_max = 1.6 * sqrt(s)
 	smoke_mat.damping_min = 1.0
 	smoke_mat.damping_max = 2.0
 	smoke_mat.gravity = Vector3(0, 0.8, 0)
-	smoke_mat.scale_min = 0.7 * s
-	smoke_mat.scale_max = 1.4 * s
-	smoke_mat.scale_curve = FX.curve([Vector2(0, 0.5), Vector2(1, 1.8)])
-	smoke_mat.color_ramp = FX.ramp([Color(0.2, 0.18, 0.16, 0), Color(0.2, 0.18, 0.16, 0.75), Color(0.38, 0.38, 0.38, 0)],
+	smoke_mat.scale_min = 0.45 * s
+	smoke_mat.scale_max = 0.85 * s
+	smoke_mat.scale_curve = FX.curve([Vector2(0, 0.5), Vector2(1, 1.5)])
+	smoke_mat.color_ramp = FX.ramp([Color(0.2, 0.18, 0.16, 0), Color(0.2, 0.18, 0.16, 0.45), Color(0.38, 0.38, 0.38, 0)],
 		[0.0, 0.15, 1.0])
-	var smoke := FX.emitter(int(6 + 12 * s), 1.0 + 0.8 * s, smoke_mat, FX.quad(false), true)
+	var smoke := FX.emitter(int(4 + 4 * s), 0.9 + 0.45 * s, smoke_mat, FX.quad(false), true)
 
 	var sparks := FX.burst(color, int(8 + 22 * s), 4.0 + 5.0 * sqrt(s), 0.05 + 0.04 * s, 0.35 + 0.3 * s)
 

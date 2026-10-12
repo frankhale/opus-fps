@@ -1,16 +1,16 @@
 extends Control
 ## North-up map of the level with an arrow for the player's position and facing.
 ## The map is a top-down orthographic render of the world, taken once at startup
-## (call refresh() to retake it). The corner minimap shows a window around the
+## (call refresh() to retake it). Living enemies show as red dots. The corner minimap shows a window around the
 ## player that scrolls as they move; the "toggle_map" action shows the whole map.
 
 @export var player_path: NodePath
 ## Viewport whose World3D is drawn (the game's SubViewport).
 @export var world_viewport_path: NodePath
 ## Half-width of the area shown, in meters, centered on the world origin.
-@export var world_extent := 42.0
+@export var world_extent := 66.0
 ## Render resolution of the whole map (about 0.44 m per pixel at the default extent).
-@export var map_pixels := 192
+@export var map_pixels := 300
 ## Map pixels visible across the corner minimap (64 px is about 28 m).
 @export var window_pixels := 64
 ## Screen pixels per map pixel for the corner minimap and the full map.
@@ -20,7 +20,8 @@ extends Control
 
 const FRAME_COLOR := Color(0.91, 0.85, 0.7)
 const BACKDROP_COLOR := Color(0.08, 0.09, 0.1, 0.75)
-const ARROW_COLOR := Color(0.91, 0.24, 0.2)
+const ARROW_COLOR := Color(0.91, 0.85, 0.7)
+const ENEMY_COLOR := Color(0.95, 0.15, 0.1)
 
 var _player: Node3D
 var _map_viewport: SubViewport
@@ -104,6 +105,15 @@ func _draw() -> void:
 	var font := ThemeDB.fallback_font
 	var fs := 14 if _large else 11
 	draw_string(font, Vector2(size.x / 2.0 - fs * 0.35, fs + 2.0), "N", HORIZONTAL_ALIGNMENT_LEFT, -1, fs, FRAME_COLOR)
+
+	var px_per_map := size / region.size
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if e.dead:
+			continue
+		var ep: Vector3 = e.global_position
+		var epx := (Vector2(ep.x + world_extent, ep.z + world_extent) / (world_extent * 2.0) * map_pixels - region.position) * px_per_map
+		if Rect2(Vector2.ZERO, size).has_point(epx):
+			draw_rect(Rect2(epx - Vector2(2.5, 2.5), Vector2(5, 5)), ENEMY_COLOR)
 
 	var center := ((player_px - region.position) * size / region.size).clamp(Vector2.ZERO, size)
 	var yaw := _player.global_rotation.y

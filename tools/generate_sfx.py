@@ -9,7 +9,8 @@ the world, written straight into the Godot project at godot/assets/sfx/.
   slide_loop.wav     gravel slide, seamless loop
   wind_loop.wav      outdoor ambience, seamless loop
   pistol/shotgun/rifle/rocket/plasma.wav   weapon fire
-  explosion_small/large.wav, dry_fire.wav, pickup_weapon/ammo.wav, respawn.wav
+  explosion_small/large.wav, dry_fire.wav, pickup_weapon/ammo.wav, respawn.wav, heal.wav
+  eye_alert/charge/fire/hurt/die.wav, player_hurt.wav   enemy and pain sounds
 
 Loop files get a .import that tells Godot to loop them. Run from the repo root:
   python3 tools/generate_sfx.py
@@ -192,6 +193,55 @@ def weapon_sounds(rng):
     n = int(0.45 * RATE)
     arp = mix(*[[0.0] * int(k * 0.07 * RATE) + tone(n, f, 0.12, 0.005, (1.0, 0.2, 0.0)) for k, f in enumerate((523, 659, 784, 1046))])
     write("respawn.wav", arp, 0.4)
+    n = int(0.5 * RATE)
+    heal = mix(*[[0.0] * int(k * 0.06 * RATE) + tone(n, f, 0.15, 0.01, (1.0, 0.3, 0.0)) for k, f in enumerate((392, 523, 659))])
+    write("heal.wav", heal, 0.45)
+
+
+def creature_sounds(rng):
+    """The floating eye: wet, organic noises, plus the player's pain grunt."""
+    def sweep(n, f0, f1, k, harm=(1.0, 0.5, 0.25)):
+        out, ph = [], 0.0
+        for i in range(n):
+            f = f1 + (f0 - f1) * math.exp(-i / (k * RATE)) if f0 > f1 else f0 + (f1 - f0) * (i / n) ** 1.5
+            ph += 2 * math.pi * f / RATE
+            out.append(sum(a * math.sin((j + 1) * ph) for j, a in enumerate(harm)))
+        return out
+
+    # Alert: a warbling screech that drops in pitch.
+    n = int(0.7 * RATE)
+    screech = sweep(n, 1400, 380, 0.25, (1.0, 0.6, 0.4, 0.3))
+    wob = [1 + 0.35 * math.sin(2 * math.pi * 23 * i / RATE) for i in range(n)]
+    hiss = highpass(lowpass(noise(n, rng), 0.5), 0.1)
+    write("eye_alert.wav", [(s * w + h * 0.3) * e for s, w, h, e in zip(screech, wob, hiss, env(n, 0.03, 0.25))], 0.7)
+
+    # Charge: a rising whine before each shot.
+    n = int(0.4 * RATE)
+    whine = sweep(n, 220, 900, 0.0, (1.0, 0.3))
+    write("eye_charge.wav", [s * min(i / n * 1.5, 1.0) for i, s in enumerate(whine)], 0.45)
+
+    # Fire: a wet "thwip" spit.
+    n = int(0.3 * RATE)
+    spit = [s * e for s, e in zip(lowpass(noise(n, rng), 0.35), env(n, 0.002, 0.05))]
+    write("eye_fire.wav", mix(spit, [s * 0.7 for s in sweep(n, 700, 160, 0.04)]), 0.7)
+
+    # Hurt: a squelch with a short pained squeal.
+    n = int(0.35 * RATE)
+    squelch = [s * e for s, e in zip(lowpass(lowpass(noise(n, rng), 0.25), 0.4), env(n, 0.004, 0.06))]
+    squeal = [s * e * 0.5 for s, e in zip(sweep(n, 1100, 600, 0.08), env(n, 0.01, 0.07))]
+    write("eye_hurt.wav", mix(squelch, squeal), 0.75)
+
+    # Death: a burst of gore and a dying, falling wail.
+    n = int(1.1 * RATE)
+    burst = [s * e for s, e in zip(lowpass(noise(n, rng), 0.3), env(n, 0.002, 0.12))]
+    wail = [s * e * 0.6 for s, e in zip(sweep(n, 900, 120, 0.35, (1.0, 0.5, 0.3)), env(n, 0.02, 0.35))]
+    write("eye_die.wav", mix(burst, wail, [s * 0.6 for s in sweep_thump(n, 120, 50, 0.04, 0.12)]), 0.85)
+
+    # Player hurt: a dull body hit and a short, low "hngh".
+    n = int(0.3 * RATE)
+    hit = [s * e for s, e in zip(lowpass(noise(n, rng), 0.2), env(n, 0.002, 0.03))]
+    grunt = [s * e * 0.7 for s, e in zip(sweep(n, 160, 105, 0.1, (1.0, 0.7, 0.5, 0.3, 0.2)), env(n, 0.015, 0.08))]
+    write("player_hurt.wav", mix(hit, grunt), 0.7)
 
 
 def generate():
@@ -237,6 +287,7 @@ def generate():
     write("wind_loop.wav", loopable([a * g for a, g in zip(air, gust)], 1.0), 0.7)
 
     weapon_sounds(random.Random(11))
+    creature_sounds(random.Random(13))
 
     for name in ("slide_loop.wav", "wind_loop.wav"):
         path = os.path.join(OUT, name + ".import")

@@ -54,8 +54,11 @@ extends Resource
 @export var projectile_gravity := 0.0
 @export var smoke_trail := false
 @export var explosion_color := Color(1.0, 0.6, 0.2)
-## Not used yet; there is nothing to damage.
+## Damage per projectile on a direct hit.
 @export var damage := 10.0
+## Area damage around the impact (rockets), falling off to zero at the radius.
+@export var splash_radius := 0.0
+@export var splash_damage := 0.0
 
 ## Explosion size per meter of projectile radius.
 const EXPLOSION_PER_SIZE := 20.0

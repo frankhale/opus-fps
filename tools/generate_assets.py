@@ -28,7 +28,7 @@ from mathutils import Euler, Matrix, Vector
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 OUT = os.path.abspath(argv[0] if argv else "assets")
 PREVIEW_DIR = os.path.abspath(argv[argv.index("--preview") + 1]) if "--preview" in argv else None
-ONLY = argv[argv.index("--only") + 1] if "--only" in argv else None  # build one category
+ONLY = argv[argv.index("--only") + 1] if "--only" in argv else None  # one category or asset name
 
 # ---------------------------------------------------------------------------
 # Palette: 8 columns x 4 rows. A somber, dusk-lit world: cold deep greens, muddy
@@ -385,6 +385,22 @@ def terrain_dirt_path(b):
             return {"dirt": 1, "grass": 2, "olive": 1}
         return GRASS
     terrain(b, lambda x, y: noise(x, y) * edge_window(x, y) * min(1, abs(x) / 2.5), color, jit=0.04)
+
+
+@asset("terrain")
+def terrain_path_cross(b):
+    """Crossroads: dirt paths along both axes, matching terrain_dirt_path's edges."""
+    noise = make_noise(b.rng, 0.35)
+
+    def color(f):
+        c = f.calc_center_median()
+        near = min(abs(c.x), abs(c.y))
+        if near < 1:
+            return {"dirt": 5, "dsoil": 1, "sand": 1}
+        if near < 2:
+            return {"dirt": 1, "grass": 2, "olive": 1}
+        return GRASS
+    terrain(b, lambda x, y: noise(x, y) * edge_window(x, y) * min(1, abs(x) / 2.5, abs(y) / 2.5), color, jit=0.04)
 
 
 @asset("terrain")
@@ -1242,7 +1258,7 @@ def generate():
     mats = (make_material(img, False), make_material(img, True))
     results = []
     for i, (cat, name, fn) in enumerate(ASSETS):
-        if ONLY and cat != ONLY:
+        if ONLY and ONLY not in (cat, name):
             continue
         clear_objects()
         b = Builder(seed=1000 + i)
