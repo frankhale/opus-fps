@@ -11,10 +11,11 @@ extends Control
 @export var world_extent := 66.0
 ## Render resolution of the whole map (about 0.44 m per pixel at the default extent).
 @export var map_pixels := 300
-## Map pixels visible across the corner minimap (64 px is about 28 m).
-@export var window_pixels := 64
+## Map pixels visible across the corner minimap (128 px is about 56 m, under half
+## the map's width, so the player can see where they are in the level).
+@export var window_pixels := 128
 ## Screen pixels per map pixel for the corner minimap and the full map.
-@export var small_scale := 3
+@export var small_scale := 2
 @export var large_scale := 2
 @export var margin := 12.0
 

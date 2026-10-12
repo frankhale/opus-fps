@@ -19,6 +19,7 @@ Each sheet shows every model with its name, triangle count and size. Single-mode
 ![Weapons](previews/sheet_weapons.png)
 ![Pickups](previews/sheet_pickups.png)
 ![Enemies](previews/sheet_enemies.png)
+![Ammo](previews/sheet_ammo.png)
 
 ## Palette
 
@@ -42,4 +43,5 @@ The texture sampler is set to nearest filtering. For the full PS1 look, also tur
 - **weapons/**: origin at the grip, with the barrel pointing -Z (the direction the camera looks). They are real-world scale, so scale them up for first-person viewmodels.
 - **pickups/**: origin at the base, sized about 0.3–0.7 m. Spin or bob them in game.
 - **viewmodel/**: first-person arm parts: right and left hands closed around a pistol-style grip, a left support hand for barrels and handguards, and a forearm with a jacket sleeve. Each hand's origin is the centre of what it holds. The forearm's origin is the wrist, and it runs 0.7 m toward the elbow.
+- **ammo/**: one round per ammo type (bullet, shotgun shell, rocket, plasma cell) for the HUD ammo counter. Origin at the base, standing upright, real-world scale.
 - **enemies/**: origin at the feet, facing +Z. `enemy_floating_eye` has its origin at its center, so hover it in game. Models are static meshes (not rigged).

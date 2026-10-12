@@ -97,6 +97,9 @@ func _physics_process(delta: float) -> void:
 			_report_hit(target)
 		explode(hit.position, hit.normal)
 		return
+	if data.proximity_radius > 0.0 and _enemy_near(to):
+		explode(to, -velocity.normalized())
+		return
 	global_position = to
 	_travelled += velocity.length() * delta
 	if _travelled >= TRAIL_START_DISTANCE and not _core.visible:
@@ -118,6 +121,18 @@ func explode(at: Vector3, normal := Vector3.UP) -> void:
 	if data.splash_radius > 0.0:
 		_splash(at)
 	_finish()
+
+
+## Proximity fuse: any enemy within the fuse radius of this point.
+func _enemy_near(at: Vector3) -> bool:
+	var sphere := SphereShape3D.new()
+	sphere.radius = data.proximity_radius
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = sphere
+	q.transform = Transform3D(Basis.IDENTITY, at)
+	q.collision_mask = collision_mask & LAYER_ENEMIES
+	q.exclude = exclude
+	return not get_world_3d().direct_space_state.intersect_shape(q, 1).is_empty()
 
 
 ## Area damage to enemies near the impact, falling off linearly with distance.

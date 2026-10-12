@@ -62,6 +62,9 @@ extends Resource
 ## Area damage around the impact (rockets), falling off to zero at the radius.
 @export var splash_radius := 0.0
 @export var splash_damage := 0.0
+## Detonates when it passes this close to an enemy (0 = only on contact), so slow
+## projectiles still catch fast, dodging targets.
+@export var proximity_radius := 0.0
 
 ## Explosion size per meter of projectile radius.
 const EXPLOSION_PER_SIZE := 20.0

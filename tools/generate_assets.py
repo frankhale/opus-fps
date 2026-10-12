@@ -1232,6 +1232,42 @@ def forearm(b):
     b.lathe([(0.05, 0.2), (0.05, 0.26)], seg=6, rot=(-90, 0, 0), color="dgrass")          # rolled cuff band
 
 
+# =============================== AMMO ======================================
+# Single rounds for the HUD ammo counter, one per ammo type. Each stands upright on
+# its base (origin at the bottom centre) and is real-world scale.
+@asset("ammo")
+def ammo_round_bullet(b):
+    b.lathe([(0.0145, 0), (0.0145, 0.004), (0.012, 0.006), (0.013, 0.05)], seg=6, color="brass")  # rim + case
+    b.lathe([(0.013, 0.05), (0.0115, 0.058), (0.007, 0.075), (0, 0.085)], seg=6, color="orange")  # bullet
+
+
+@asset("ammo")
+def ammo_round_shell(b):
+    b.lathe([(0.0145, 0), (0.0145, 0.004), (0.0135, 0.005), (0.0135, 0.02)], seg=8, color="brass")  # head
+    b.lathe([(0.013, 0.02), (0.013, 0.07), (0.011, 0.074), (0, 0.074)], seg=8, color="red")         # hull
+    b.lathe([(0.0132, 0.03), (0.0132, 0.036)], seg=8, color="roof")                                  # crimp ring
+
+
+@asset("ammo")
+def ammo_round_rocket(b):
+    b.lathe([(0.03, 0.03), (0.04, 0.05), (0.04, 0.3)], seg=8, color="gunmetal")      # nozzle + body
+    b.lathe([(0.041, 0.24), (0.041, 0.265)], seg=8, color="yellow")                    # warning band
+    b.lathe([(0.04, 0.3), (0.03, 0.36), (0.012, 0.4), (0, 0.41)], seg=8, color="red")  # warhead
+    for a in (0, 90, 180, 270):
+        with b.at(rot=(0, 0, a)):
+            b.slab([(0.035, 0.0), (0.075, 0.0), (0.07, 0.04), (0.035, 0.1)], 0.008, plane="XZ",
+                   color="steel")                                                      # tail fins
+
+
+@asset("ammo")
+def ammo_round_cell(b):
+    b.box((0.05, 0.05, 0.016), (0, 0, 0.008), color="steel")               # base cap
+    b.box((0.044, 0.044, 0.07), (0, 0, 0.051), color="gunmetal")            # casing
+    b.box((0.03, 0.046, 0.05), (0, 0, 0.051), color="cyan", glow=True)      # charge window
+    b.box((0.05, 0.05, 0.012), (0, 0, 0.092), color="steel")                # top cap
+    b.cyl(0.008, 0.008, 0.014, seg=6, loc=(0, 0, 0.105), color="chrome")   # terminal
+
+
 # ---------------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------------

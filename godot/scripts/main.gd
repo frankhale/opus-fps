@@ -2,7 +2,7 @@ extends Control
 ## Hosts the game world in a low-resolution SubViewport that is upscaled with
 ## nearest-neighbour filtering and run through the PS1 dither/color-depth shader.
 ## Also owns mouse capture (click to capture, Esc to release), F1 toggles the PS1 filter
-## and F11 / Alt+Enter toggles fullscreen (the game starts fullscreen).
+## F11 / Alt+Enter toggles fullscreen (the game starts fullscreen) and Cmd+Q quits.
 
 ## Approximate vertical resolution to render at (the PS1 mostly ran at 240 lines).
 @export var target_lines := 240
@@ -44,6 +44,9 @@ func _input(event: InputEvent) -> void:
 			KEY_ENTER:
 				if event.alt_pressed:
 					_toggle_fullscreen()
+			KEY_Q:
+				if event.meta_pressed:
+					get_tree().quit()
 
 
 func _toggle_fullscreen() -> void:

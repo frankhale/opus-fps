@@ -16,7 +16,7 @@ import shutil
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "assets")
 DST = os.path.join(ROOT, "godot", "assets")
-CATEGORIES = ["terrain", "scenery", "weapons", "pickups", "enemies", "viewmodel"]
+CATEGORIES = ["terrain", "scenery", "weapons", "pickups", "enemies", "viewmodel", "ammo"]
 
 # Scenery you walk through rather than bump into.
 NO_COLLISION = {"grass_tuft", "flowers", "skull_pile", "bush"}

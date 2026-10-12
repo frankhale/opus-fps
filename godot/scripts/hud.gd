@@ -1,12 +1,13 @@
 extends CanvasLayer
-## Player HUD: health (bottom-left), current weapon and ammo (bottom-right, red when
-## low), pickup messages that fade out, a red flash when hurt and a death screen.
+## Player HUD: a health bar (bottom-left, see HealthBar), the current weapon and its
+## ammo as rows of rounds (bottom-right, see AmmoDisplay), pickup messages that fade
+## out, a red flash when hurt and a death screen.
 
 @export var weapons_path: NodePath
 
 @onready var weapon_label: Label = $WeaponName
-@onready var ammo_label: Label = $AmmoCount
-@onready var health_label: Label = $HealthCount
+@onready var ammo_display: AmmoDisplay = $AmmoDisplay
+@onready var health_bar: HealthBar = $HealthBar
 @onready var message_label: Label = $Message
 @onready var damage_flash: ColorRect = $DamageFlash
 @onready var death_screen: Control = $DeathScreen
@@ -38,18 +39,15 @@ func _ready() -> void:
 func _refresh() -> void:
 	var w := _weapons.current
 	weapon_label.visible = w != null
-	ammo_label.visible = w != null
 	if w == null:
+		ammo_display.show_ammo("", 0)
 		return
-	var count: int = _weapons.ammo[w.ammo_type]
 	weapon_label.text = "%d  %s" % [w.slot, w.display_name.to_upper()]
-	ammo_label.text = "%d %s" % [count, w.ammo_type.to_upper()]
-	ammo_label.modulate = Color(1.0, 0.35, 0.3) if count <= 5 else Color.WHITE
+	ammo_display.show_ammo(w.ammo_type, _weapons.ammo[w.ammo_type])
 
 
 func _on_health(health: float, max_health: float) -> void:
-	health_label.text = "%d HEALTH" % ceili(health)
-	health_label.modulate = Color(1.0, 0.3, 0.25) if health <= max_health * 0.25 else Color.WHITE
+	health_bar.set_health(health, max_health)
 
 
 func _on_damaged(amount: float, _from: Vector3) -> void:
