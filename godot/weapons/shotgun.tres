@@ -24,6 +24,7 @@ projectiles_per_shot = 8
 spread_degrees = 5.0
 recoil = 2.2
 fire_sound = ExtResource("3_sound")
+reticle = "circle"
 ammo_type = "shells"
 ammo_on_pickup = 12
 projectile_speed = 62.0

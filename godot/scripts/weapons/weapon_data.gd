@@ -37,6 +37,9 @@ extends Resource
 ## Scales the viewmodel kick and camera recoil.
 @export var recoil := 1.0
 @export var fire_sound: AudioStream
+## Reticle shape: lines with a gap ("cross"), a ring showing the spread ("circle"),
+## or a small ring around a dot ("dot", for slow, precise weapons).
+@export_enum("cross", "circle", "dot") var reticle := "cross"
 
 @export_group("Ammo")
 @export_enum("bullets", "shells", "rockets", "cells") var ammo_type := "bullets"

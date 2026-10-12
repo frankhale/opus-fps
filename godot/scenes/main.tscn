@@ -1,10 +1,13 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Shader" path="res://materials/ps1_post.gdshader" id="2_post"]
 [ext_resource type="PackedScene" path="res://scenes/world.tscn" id="3_world"]
 [ext_resource type="Script" path="res://scripts/minimap.gd" id="4_minimap"]
 [ext_resource type="Script" path="res://scripts/hud.gd" id="5_hud"]
+[ext_resource type="Script" path="res://scripts/reticle.gd" id="6_reticle"]
+[ext_resource type="AudioStream" path="res://assets/sfx/hitmarker.wav" id="7_hit"]
+[ext_resource type="AudioStream" path="res://assets/sfx/killmarker.wav" id="8_kill"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_post"]
 shader = ExtResource("2_post")
@@ -97,22 +100,19 @@ label_settings = SubResource("LabelSettings_death")
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="Crosshair" type="Label" parent="HUD"]
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -10.0
-offset_top = -12.0
-offset_right = 10.0
-offset_bottom = 12.0
+[node name="Reticle" type="Control" parent="HUD"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-text = "+"
-label_settings = SubResource("LabelSettings_hint")
-horizontal_alignment = 1
-vertical_alignment = 1
+mouse_filter = 2
+script = ExtResource("6_reticle")
+weapons_path = NodePath("../../SubViewportContainer/SubViewport/World/Player/WeaponManager")
+hit_sound = ExtResource("7_hit")
+kill_sound = ExtResource("8_kill")
+
 
 [node name="Hint" type="Label" parent="HUD"]
 offset_left = 12.0

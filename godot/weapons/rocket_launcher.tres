@@ -25,6 +25,7 @@ projectiles_per_shot = 1
 spread_degrees = 0.3
 recoil = 3.0
 fire_sound = ExtResource("3_sound")
+reticle = "dot"
 ammo_type = "rockets"
 ammo_on_pickup = 5
 projectile_speed = 30.0

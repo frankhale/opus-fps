@@ -11,6 +11,7 @@ the world, written straight into the Godot project at godot/assets/sfx/.
   pistol/shotgun/rifle/rocket/plasma.wav   weapon fire
   explosion_small/large.wav, dry_fire.wav, pickup_weapon/ammo.wav, respawn.wav, heal.wav
   eye_alert/charge/fire/hurt/die.wav, player_hurt.wav   enemy and pain sounds
+  hitmarker.wav, killmarker.wav   hit confirmation ticks
 
 Loop files get a .import that tells Godot to loop them. Run from the repo root:
   python3 tools/generate_sfx.py
@@ -242,6 +243,14 @@ def creature_sounds(rng):
     hit = [s * e for s, e in zip(lowpass(noise(n, rng), 0.2), env(n, 0.002, 0.03))]
     grunt = [s * e * 0.7 for s, e in zip(sweep(n, 160, 105, 0.1, (1.0, 0.7, 0.5, 0.3, 0.2)), env(n, 0.015, 0.08))]
     write("player_hurt.wav", mix(hit, grunt), 0.7)
+
+    # Hit marker: a short, bright tick; kill confirm: a lower, fuller double tick.
+    n = int(0.06 * RATE)
+    tick = [s * e for s, e in zip(highpass(noise(n, rng), 0.4), env(n, 0.0005, 0.006))]
+    write("hitmarker.wav", mix(tick, tone(n, 2400, 0.012, 0.0005, (0.6, 0.0, 0.0))), 0.5)
+    n = int(0.14 * RATE)
+    write("killmarker.wav", mix(tone(n, 1500, 0.03, 0.0005, (0.8, 0.3, 0.0)),
+                                [0.0] * int(0.05 * RATE) + tone(n, 1100, 0.04, 0.0005, (0.8, 0.3, 0.0))), 0.55)
 
 
 def generate():

@@ -11,6 +11,8 @@ extends Node
 signal weapon_changed(weapon: WeaponData)
 signal ammo_changed(ammo_type: String, amount: int)
 signal message(text: String)
+## A shot landed on something damageable; `killed` if that was the killing blow.
+signal hit_confirmed(killed: bool)
 
 const MAX_AMMO := {"bullets": 200, "shells": 50, "rockets": 20, "cells": 150}
 ## Render layer 2 (bit value 2) holds viewmodel meshes only.
@@ -30,6 +32,17 @@ const WRIST_LEFT_SUPPORT := Vector3(-0.036, -0.062, 0.08)
 @export var pickup_weapon_sound: AudioStream
 @export var pickup_ammo_sound: AudioStream
 @export var fire_volume_db := -6.0
+
+@export_group("Accuracy")
+## Extra spread (degrees) per shot, scaled by the weapon's recoil. It holds while
+## firing and recovers once the trigger has been off for `bloom_hold` seconds.
+@export var bloom_per_shot := 0.7
+@export var bloom_max := 4.0
+@export var bloom_hold := 0.15
+@export var bloom_recovery := 5.0
+## Extra spread while moving at sprint speed, and while in the air.
+@export var move_spread := 1.2
+@export var air_spread := 2.5
 
 @export_group("Arms")
 ## Shoulder positions in camera space, just off-screen below and behind the view.
@@ -71,6 +84,8 @@ var _sway := Vector2.ZERO
 var _kick := 0.0
 var _kick_v := 0.0
 var _sprint_pose := 0.0
+var _bloom := 0.0
+var _bloom_timer := 0.0
 
 
 func _ready() -> void:
@@ -324,6 +339,9 @@ func _process(delta: float) -> void:
 	_vm_camera.global_transform = camera.global_transform
 
 	_cooldown -= delta
+	_bloom_timer -= delta
+	if _bloom_timer <= 0.0:
+		_bloom = move_toward(_bloom, 0.0, bloom_recovery * delta)
 	if current and not _switching and not player.dead and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var pressed := Input.is_action_pressed("fire") if current.automatic else Input.is_action_just_pressed("fire")
 		if pressed and _cooldown <= 0.0:
@@ -361,13 +379,16 @@ func _fire() -> void:
 		var p := Projectile.new()
 		p.data = w
 		p.exclude = [player.get_rid()]
-		var dir := _spread((target - spawn).normalized(), w.spread_degrees)
+		p.on_hit = func(killed: bool): hit_confirmed.emit(killed)
+		var dir := _spread((target - spawn).normalized(), current_spread())
 		p.velocity = dir * w.projectile_speed
 		player.get_parent().add_child(p)
 		p.global_position = spawn
 		if block:
 			p.explode(block.position, block.normal)
 
+	_bloom = minf(_bloom + bloom_per_shot * w.recoil, bloom_max)
+	_bloom_timer = w.fire_interval + bloom_hold
 	_flash.visible = true
 	_flash.rotation.z = randf() * TAU
 	_flash.scale = Vector3.ONE * randf_range(0.85, 1.2)
@@ -379,6 +400,16 @@ func _fire() -> void:
 	if w.recoil >= 2.0 and camera.has_method("add_trauma"):
 		camera.add_trauma(0.12 * w.recoil)
 	_play(w.fire_sound, fire_volume_db, _fire_audio)
+
+
+## Current cone half-angle in degrees: the weapon's base spread plus shot bloom and
+## movement. The reticle draws exactly this, so it always shows true accuracy.
+func current_spread() -> float:
+	if current == null:
+		return 0.0
+	var move := clampf(player.horizontal_speed() / player.sprint_speed, 0.0, 1.0) * move_spread
+	var air := 0.0 if player.is_on_floor() else air_spread
+	return current.spread_degrees + _bloom + move + air
 
 
 func _muzzle_world_point() -> Vector3:

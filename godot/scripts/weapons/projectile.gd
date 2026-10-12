@@ -20,6 +20,8 @@ var velocity := Vector3.ZERO
 var exclude: Array[RID] = []
 ## What it can hit: world + enemies for the player's shots, world + player for enemies'.
 var collision_mask := 1 | LAYER_ENEMIES
+## Called with (killed: bool) whenever this projectile damages something (hit markers).
+var on_hit: Callable
 
 var _core: MeshInstance3D
 var _trails: Array[GPUParticles3D] = []
@@ -92,6 +94,7 @@ func _physics_process(delta: float) -> void:
 		var target: Object = hit.collider
 		if target and target.has_method("take_damage"):
 			target.take_damage(data.damage, hit.position, velocity.normalized())
+			_report_hit(target)
 		explode(hit.position, hit.normal)
 		return
 	global_position = to
@@ -133,6 +136,12 @@ func _splash(at: Vector3) -> void:
 			var amount := data.splash_damage * clampf(1.0 - d / data.splash_radius, 0.0, 1.0)
 			if amount > 1.0:
 				body.take_damage(amount, at, ((body as Node3D).global_position - at).normalized())
+				_report_hit(body)
+
+
+func _report_hit(target: Object) -> void:
+	if on_hit.is_valid():
+		on_hit.call(target.get("dead") == true)
 
 
 ## Hide the core and let the trails fade out before freeing.
