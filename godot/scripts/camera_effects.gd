@@ -4,7 +4,7 @@ extends Camera3D
 ## aiming or movement.
 ##  * head bob with lateral sway and a "foot plant" dip, scaled by speed
 ##  * leaning into strafes and slides
-##  * FOV kick when sprinting and sliding
+##  * FOV kick when sprinting and sliding, and a wide stretch on going through a portal
 ##  * spring-damped landing dip and pitch kick, shake on hard landings
 ##  * subtle breathing when standing still
 ## Emits `footstep` on every foot plant so audio stays in sync with the bob.
@@ -16,6 +16,8 @@ signal footstep(intensity: float)
 @export var sprint_fov := 82.0
 @export var slide_fov := 88.0
 @export var fov_speed := 7.0
+## Extra FOV the view snaps to after going through a portal, easing back.
+@export var teleport_fov := 30.0
 
 @export_group("Bob")
 ## Height of the dip at each foot plant, in meters (at walk speed).
@@ -60,6 +62,7 @@ func _ready() -> void:
 	fov = base_fov
 	player.landed.connect(_on_landed)
 	player.jumped.connect(_on_jumped)
+	player.teleported.connect(func(): fov = base_fov + teleport_fov)
 
 
 func _on_landed(impact: float) -> void:

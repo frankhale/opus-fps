@@ -1,10 +1,13 @@
 extends SceneTree
-## Builds res://scenes/level.tscn: a 120 x 120 m valley ringed by cliffs and mountains.
+## Builds res://scenes/level.tscn: a 184 x 184 m valley of rolling hills ringed by
+## cliffs and mountains. The ground is a Terrain node (scripts/terrain.gd) that bends
+## the terrain tiles over the hills; settlements and ponds sit on flat ground.
 ## A dirt road runs north past a village, a campsite and a pond to some ruins, and a
 ## crossroads south of the start leads west to a military outpost and east to a
 ## homestead. An overgrown graveyard and a second pond fill the north. Floating eyes
-## guard each area, and weapons, ammo and health are spread around. Props are dropped
-## onto the terrain surface.
+## guard each area, and weapons, ammo and health are spread around. A pair of linked
+## portals joins the west end of the crossroads road to the far north end of the main
+## road. Props are dropped onto the terrain surface.
 ##
 ## Regenerate with:
 ##   Godot --headless --path godot --script res://tools/build_level.gd
@@ -13,14 +16,18 @@ extends SceneTree
 const OUT := "res://scenes/level.tscn"
 const PICKUP := preload("res://scripts/weapons/pickup.gd")
 const EYE := preload("res://scripts/enemies/floating_eye.gd")
+const PORTAL := preload("res://scripts/portal.gd")
+const CAMPFIRE := preload("res://scripts/campfire.gd")
+const TERRAIN := preload("res://scripts/terrain.gd")
 const TILE := 8.0
-const HALF := 7  # tiles from the center to the edge: 15 x 15 tiles
+const HALF := 11  # tiles from the center to the edge: 23 x 23 tiles
 ## Half-width of the walkable valley (cliff faces sit just beyond this).
 const EXTENT := HALF * TILE + TILE / 2
 ## z of the east-west road through the crossroads.
 const ROAD_Z := 40.0
 
 var level: Node3D
+var terrain: Terrain
 var groups := {}
 var cache := {}
 var terrain_faces: Array = []  # [{min: Vector2, max: Vector2, faces: PackedVector3Array}]
@@ -51,7 +58,7 @@ func _init() -> void:
 	level = Node3D.new()
 	level.name = "Level"
 	for g in ["Terrain", "Backdrop", "Village", "Campsite", "Ruins", "Pond", "Crossroads", "Outpost", "Homestead",
-			"Graveyard", "NorthPond", "Nature", "Lights", "Pickups", "Enemies"]:
+			"Graveyard", "NorthPond", "Nature", "Lights", "Pickups", "Enemies", "Portals"]:
 		var n := Node3D.new()
 		n.name = g
 		level.add_child(n)
@@ -71,6 +78,7 @@ func _init() -> void:
 	build_nature()
 	build_pickups()
 	build_enemies()
+	build_portals()
 	var packed := PackedScene.new()
 	var err := packed.pack(level)
 	if err == OK:
@@ -124,19 +132,6 @@ func ground(x: float, z: float) -> float:
 	return best
 
 
-func register_terrain(inst: Node3D) -> void:
-	var mi: MeshInstance3D = inst.find_children("*", "MeshInstance3D", true, false)[0]
-	var xf := inst.transform * mi.transform
-	var raw := mi.mesh.get_faces()
-	var faces := PackedVector3Array()
-	faces.resize(raw.size())
-	for i in raw.size():
-		faces[i] = xf * raw[i]
-	var p := inst.position
-	terrain_faces.append({"min": Vector2(p.x - TILE / 2, p.z - TILE / 2),
-		"max": Vector2(p.x + TILE / 2, p.z + TILE / 2), "faces": faces})
-
-
 func light(group: String, pos: Vector3, color: Color, energy: float, light_range: float) -> void:
 	var l := OmniLight3D.new()
 	l.position = pos
@@ -174,7 +169,13 @@ func is_clear(x: float, z: float) -> bool:
 	return true
 
 
-func scatter(group: String, names: Array, count: int, margin: float, need_clear := true, rot_jitter := 360.0) -> void:
+## Low-frequency noise that gathers trees into groves, leaving open meadows between.
+var groves := FastNoiseLite.new()
+
+
+## With `grove` set, only places things where the grove noise is above it (lower = more cover).
+func scatter(group: String, names: Array, count: int, margin: float, need_clear := true, rot_jitter := 360.0,
+		grove := -INF) -> void:
 	var placed := 0
 	var tries := 0
 	while placed < count and tries < count * 40:
@@ -182,6 +183,8 @@ func scatter(group: String, names: Array, count: int, margin: float, need_clear 
 		var x := rng.randf_range(-EXTENT + 1.0 + margin, EXTENT - 1.0 - margin)
 		var z := rng.randf_range(-EXTENT + 1.0 + margin, EXTENT - 1.0 - margin)
 		if need_clear and not is_clear(x, z):
+			continue
+		if groves.get_noise_2d(x, z) < grove:
 			continue
 		var name: String = names[rng.randi() % names.size()]
 		place(group, name, x, z, rng.randf_range(0, rot_jitter))
@@ -206,37 +209,58 @@ func build_terrain() -> void:
 		Vector2i(6, -6): "terrain_hill", Vector2i(-1, -6): "terrain_hill",
 	}
 	var road_j := int(ROAD_Z / TILE)
-	for i in range(-HALF, HALF + 1):
-		for j in range(-HALF, HALF + 1):
+	var layout := PackedStringArray()
+	for j in range(-HALF, HALF + 1):
+		for i in range(-HALF, HALF + 1):
 			var name: String = special.get(Vector2i(i, j), "terrain_grass")
-			var rot := 0.0
+			var rot := 0
 			if i == 0:
 				name = "terrain_path_cross" if j == road_j else "terrain_dirt_path"
 			elif j == road_j:
 				name = "terrain_dirt_path"
-				rot = 90.0
+				rot = 90
 			elif name == "terrain_grass" and (i + j) % 2 == 0:
-				rot = 180.0  # rotating plain tiles hides the repetition of the grass pattern
-			var t := place("Terrain", name, i * TILE, j * TILE, rot, 0.0)
-			register_terrain(t)
-	# Cliff walls around the edge; their rock face is the model's +Z side.
+				rot = 180  # rotating plain tiles hides the repetition of the grass pattern
+			layout.append("%s:%d" % [name, rot])
+	terrain = TERRAIN.new()
+	terrain.name = "Ground"
+	terrain.half = HALF
+	terrain.tiles = layout
+	terrain.road_x = 0.0
+	terrain.road_z = ROAD_Z
+	# Settlements, ponds and the spawn sit on flat ground (the same areas is_clear() keeps
+	# free of random trees); the hills fade in around them.
+	terrain.flat_rects = [Rect2(-51, 43, 30, 15), Rect2(21, 43, 30, 15), Rect2(-50, -56, 27, 27),
+		Rect2(-17, -18, 16, 27), Rect2(3, -2, 12, 14), Rect2(-11, -35, 20, 18)]
+	terrain.flat_circles = PackedVector3Array([Vector3(32, -40, 8), Vector3(16, -8, 7), Vector3(20, 20, 5),
+		Vector3(0, 30, 6), Vector3(0, ROAD_Z, 6), Vector3(-50, ROAD_Z, 4.5), Vector3(0, -50, 4.5)])
+	terrain.keep_faces = true
+	terrain.build()
+	terrain_faces = terrain.tile_faces
+	groups["Terrain"].add_child(terrain)
+	terrain.owner = level
+	# Cliff walls around the edge, their rock face (the model's +Z side) facing in. They
+	# sit a little below the rising valley rim beside them.
 	var edge := HALF * TILE + TILE / 2 + 1.5 * WORLD_SCALE["terrain_cliff"]
+	var inner := HALF * TILE + TILE / 2 - 0.5
 	for k in range(-HALF, HALF + 1):
-		place("Terrain", "terrain_cliff", k * TILE, -edge, 0.0, 0.0)
-		place("Terrain", "terrain_cliff", k * TILE, edge, 180.0, 0.0)
-		place("Terrain", "terrain_cliff", -edge, k * TILE, 90.0, 0.0)
-		place("Terrain", "terrain_cliff", edge, k * TILE, -90.0, 0.0)
+		var x := k * TILE
+		place("Terrain", "terrain_cliff", x, -edge, 0.0, terrain.height(x, -inner) - 1.0)
+		place("Terrain", "terrain_cliff", x, edge, 180.0, terrain.height(x, inner) - 1.0)
+		place("Terrain", "terrain_cliff", -edge, x, 90.0, terrain.height(-inner, x) - 1.0)
+		place("Terrain", "terrain_cliff", edge, x, -90.0, terrain.height(inner, x) - 1.0)
 	for sx in [-1, 1]:
 		for sz in [-1, 1]:
-			place("Terrain", "rock_large", sx * (edge - 1.0), sz * (edge - 1.0), rng.randf_range(0, 360), -0.5, 3.5)
+			place("Terrain", "rock_large", sx * (edge - 1.0), sz * (edge - 1.0), rng.randf_range(0, 360),
+				terrain.height(sx * inner, sz * inner) - 0.5, 3.5)
 
 
 func build_backdrop() -> void:
 	for k in 18:
 		var a := TAU * k / 18.0 + rng.randf_range(-0.1, 0.1)
-		var r := rng.randf_range(125.0, 150.0)
+		var r := rng.randf_range(185.0, 220.0)
 		place("Backdrop", "terrain_mountain", cos(a) * r, sin(a) * r, rng.randf_range(0, 360), -4.0,
-			rng.randf_range(3.6, 4.8))
+			rng.randf_range(5.2, 6.8))
 
 
 func build_village() -> void:
@@ -263,8 +287,7 @@ func build_village() -> void:
 
 
 func build_campsite() -> void:
-	place("Campsite", "campfire", 8.5, 4.5)
-	light("Lights", Vector3(8.5, ground(8.5, 4.5) + 0.7, 4.5), Color(1.0, 0.5, 0.18), 3.2, 11.0)
+	campfire("Campsite", 8.5, 4.5)
 	place("Campsite", "tent", 12.0, 2.0, -60.0)
 	place("Campsite", "tent", 11.5, 8.0, -125.0)
 	place("Campsite", "log_fallen", 6.4, 6.6, 35.0)
@@ -293,6 +316,17 @@ func build_pond() -> void:
 	for k in 6:
 		var a := TAU * k / 6.0 + 0.4
 		place("Pond", "grass_tuft", 16.0 + cos(a) * 3.6, -8.0 + sin(a) * 3.6, rng.randf_range(0, 360))
+
+
+## A campfire model with its burning effect (flames, embers, smoke and firelight).
+func campfire(group: String, x: float, z: float) -> void:
+	var model := place(group, "campfire", x, z)
+	var fire := Node3D.new()
+	fire.set_script(CAMPFIRE)
+	fire.name = "Fire"
+	model.add_child(fire)
+	fire.owner = level
+	fire.scale = Vector3.ONE / model.scale  # the effect is sized in world meters
 
 
 func lamp(group: String, x: float, z: float, rot := 0.0) -> void:
@@ -324,8 +358,7 @@ func build_outpost() -> void:
 	place(g, "tent", -30.0, 52.0, 30.0)
 	place(g, "tent", -35.0, 54.5, -15.0)
 	place(g, "tent", -41.0, 48.0, 90.0)
-	place(g, "campfire", -35.0, 48.5)
-	light("Lights", Vector3(-35.0, ground(-35.0, 48.5) + 0.7, 48.5), Color(1.0, 0.5, 0.18), 3.2, 11.0)
+	campfire(g, -35.0, 48.5)
 	for c in [[-27.0, 46.0, 10.0], [-27.2, 47.3, -8.0], [-26.0, 46.6, 25.0], [-43.5, 55.0, 5.0]]:
 		place(g, "crate", c[0], c[1], c[2])
 	place(g, "crate", -26.8, 46.7, 40.0, ground(-26.8, 46.7) + 1.0)  # stacked
@@ -393,13 +426,18 @@ func build_north_pond() -> void:
 
 
 func build_nature() -> void:
-	scatter("Nature", ["tree_pine", "tree_pine", "tree_pine_tall"], 120, 2.5)
-	scatter("Nature", ["tree_oak"], 18, 3.5)
-	scatter("Nature", ["tree_dead", "tree_stump", "log_fallen"], 18, 3.0)
-	scatter("Nature", ["rock_small", "rock_small", "rock_large", "rock_cluster"], 50, 2.0)
-	scatter("Nature", ["bush"], 100, 1.0)
-	scatter("Nature", ["grass_tuft"], 360, 0.5, false)
-	scatter("Nature", ["flowers"], 90, 0.5, false)
+	# Counts scale roughly with the map's area (2.35x the original 120 m valley); grass and
+	# flowers less so, to keep the number of instances in check.
+	groves.seed = 11
+	groves.frequency = 0.03
+	# Pines grow in groves; oaks stand alone out in the meadows.
+	scatter("Nature", ["tree_pine", "tree_pine", "tree_pine_tall"], 230, 2.5, true, 360.0, 0.0)
+	scatter("Nature", ["tree_oak"], 40, 3.5)
+	scatter("Nature", ["tree_dead", "tree_stump", "log_fallen"], 36, 3.0)
+	scatter("Nature", ["rock_small", "rock_small", "rock_large", "rock_cluster"], 110, 2.0)
+	scatter("Nature", ["bush"], 200, 1.0)
+	scatter("Nature", ["grass_tuft"], 600, 0.5, false)
+	scatter("Nature", ["flowers"], 150, 0.5, false)
 
 
 func build_pickups() -> void:
@@ -473,3 +511,19 @@ func build_enemies() -> void:
 		eye.position = Vector3(v.x, ground(v.x, v.y) + 2.6, v.y)
 		groups["Enemies"].add_child(eye, true)
 		eye.owner = level
+
+
+## Two linked portals, each facing (+Z) back along its road: one at the west end of the
+## crossroads road, one past the ruins at the north end of the main road.
+func build_portals() -> void:
+	var spots := {"PortalWest": [-50.0, ROAD_Z, 90.0], "PortalNorth": [0.0, -50.0, 0.0]}
+	for n in spots:
+		var s: Array = spots[n]
+		var p := Node3D.new()
+		p.set_script(PORTAL)
+		p.name = n
+		p.position = Vector3(s[0], ground(s[0], s[1]), s[1])
+		p.rotation_degrees.y = s[2]
+		p.exit_path = NodePath("../" + ("PortalNorth" if n == "PortalWest" else "PortalWest"))
+		groups["Portals"].add_child(p)
+		p.owner = level

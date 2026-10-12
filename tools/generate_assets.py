@@ -4,7 +4,8 @@ PS1-style low-poly asset generator for Blender 5.x.
 Every model is textured with one shared 128x64 palette texture (assets/palette.png).
 Each face's UVs land inside a single palette swatch, and the texture is sampled with
 nearest-neighbour filtering, so faces read as flat colors with a little pixel grit.
-Glowing parts use a second, emissive material that samples the same texture.
+Glowing parts use a second, emissive material that samples the same texture, and
+portal membranes a third (PS1_Portal) that engines swap for an animated see-through shader.
 
 Conventions (Blender Z-up, exported as glTF Y-up, 1 unit = 1 meter):
   * terrain tiles are 8x8 m, origin at the center, edges at height 0 so they tile
@@ -85,7 +86,7 @@ def cell_rect(i, margin=2):
 
 
 def make_material(img, glow):
-    mat = bpy.data.materials.new("PS1_Glow" if glow else "PS1_Palette")
+    mat = bpy.data.materials.new({False: "PS1_Palette", True: "PS1_Glow", "portal": "PS1_Portal"}[glow])
     nt = mat.node_tree
     bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
     tex = nt.nodes.new("ShaderNodeTexImage")
@@ -109,6 +110,10 @@ def M(loc=(0, 0, 0), rot=(0, 0, 0), scale=(1, 1, 1)):
     if isinstance(scale, (int, float)):
         scale = (scale, scale, scale)
     return Matrix.LocRotScale(Vector(loc), Euler([math.radians(a) for a in rot]), Vector(scale))
+
+
+# Material slot per `glow` value: plain palette, emissive palette, portal membrane.
+MAT_INDEX = {False: 0, True: 1, "portal": 2}
 
 
 class Builder:
@@ -147,7 +152,7 @@ class Builder:
         faces = sorted({f for v in verts if v.is_valid for f in v.link_faces}, key=lambda f: f.index)
         for f in faces:
             f[self.pal] = IDX[self._resolve(color, f)]
-            f.material_index = 1 if glow else 0
+            f.material_index = MAT_INDEX[glow]
         return verts
 
     def jitter(self, verts, amt, keep=None):
@@ -348,15 +353,14 @@ class Builder:
             sx, sy = max(mxx - mnx, 1e-6), max(mxy - mny, 1e-6)
             for l, (x, y) in zip(f.loops, pts):
                 l[uvl].uv = (u0 + (x - mnx) / sx * (u1 - u0), v0 + (y - mny) / sy * (v1 - v0))
-        uses_glow = any(f.material_index == 1 for f in bm.faces)
+        used = max(f.material_index for f in bm.faces)
         mesh = bpy.data.meshes.new(name)
         bm.to_mesh(mesh)
         bm.free()
         for p in mesh.polygons:
             p.use_smooth = False
-        mesh.materials.append(mats[0])
-        if uses_glow:
-            mesh.materials.append(mats[1])
+        for m in mats[:used + 1]:
+            mesh.materials.append(m)
         obj = bpy.data.objects.new(name, mesh)
         bpy.context.scene.collection.objects.link(obj)
         if self.bones:
@@ -1360,6 +1364,43 @@ def ammo_round_cell(b):
     b.cyl(0.008, 0.008, 0.014, seg=6, loc=(0, 0, 0.105), color="chrome")   # terminal
 
 
+# ============================== PORTALS ====================================
+# Kept last so adding it doesn't shift the random seeds of the assets above.
+@asset("scenery")
+def portal(b):
+    """Stone ring gate on a low dais, facing -Y (+Z in glTF); walk through either side.
+    The membrane filling the ring (center 0.885 m up, radius 1.45 m) uses the PS1_Portal
+    material, so engines can swap in a shimmering see-through shader for it. The ring is
+    sunk into a low dais with gently sloped sides you walk up, so the way through is a
+    flat floor about 2.5 m wide; its lowest stones, buried completely, are left out."""
+    cz, r = 0.16 + 1.45 / 2, 1.45
+    b.cyl(2.5, 2.0, 0.16, seg=10, loc=(0, 0, 0.08), rot=(0, 0, 18), color={"stone": 3, "dstone": 1})
+    for x in (-1.9, 1.9):  # buttresses bracing the ring's foot
+        b.box((0.55, 0.9, 0.9), (x, 0, 0.55), color={"lstone": 2, "stone": 1}, jit=0.03)
+    seg = 14
+    with b.at(loc=(0, 0, cz), rot=(90, 0, 0)):
+        for k in range(seg):
+            a = 360 * (k + 0.5) / seg
+            top = abs(a - 90) < 360 / seg
+            if math.sin(math.radians(a)) < -0.85:
+                continue
+            with b.at(rot=(0, 0, a)):
+                size = (0.5, 2 * (r + 0.25) * math.tan(math.pi / seg) * 1.04, 0.62 if top else 0.5)
+                b.box(size, (r + 0.25, 0, 0), color={"lstone": 3, "stone": 1} if k % 2 else {"stone": 2, "lstone": 1},
+                      jit=0.012)
+                if k % 2 == 0 and not top:  # rune studs on both faces
+                    for side in (-1, 1):
+                        b.box((0.16, 0.12, 0.06), (r + 0.27, 0, side * 0.27), color="cyan", glow=True)
+        b.box((0.7, 0.55, 0.75), (0, r + 0.32, 0), color="lstone", jit=0.02)  # keystone
+        b.box((0.26, 0.2, 0.8), (0, r + 0.36, 0), color="cyan", glow=True)
+        # Membrane: a flat 20-gon disc of one-sided faces; the engine draws it double-sided.
+        n = 20
+        coords = [(0, 0, 0)] + [(r * math.cos(2 * math.pi * k / n), r * math.sin(2 * math.pi * k / n), 0)
+                                 for k in range(n)]
+        b.poly(coords, [(0, 1 + k, 1 + (k + 1) % n) for k in range(n)], color="cyan", glow="portal")
+
+
+
 # ---------------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------------
@@ -1387,7 +1428,7 @@ def generate():
     os.makedirs(OUT, exist_ok=True)
     clear_objects()
     img = build_palette_image()
-    mats = (make_material(img, False), make_material(img, True))
+    mats = (make_material(img, False), make_material(img, True), make_material(img, "portal"))
     results = []
     for i, (cat, name, fn) in enumerate(ASSETS):
         if ONLY and ONLY not in (cat, name):

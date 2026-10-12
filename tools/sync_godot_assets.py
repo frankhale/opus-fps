@@ -3,7 +3,8 @@ Copy the generated asset pack into the Godot project and configure how Godot imp
 
 For every model this writes the [params] section of its .import file so that:
   * the GLB's PS1_Palette / PS1_Glow materials are replaced by the project's PS1 shader
-    materials (godot/materials/ps1_palette.tres and ps1_glow.tres)
+    materials (godot/materials/ps1_palette.tres and ps1_glow.tres), and a portal's
+    PS1_Portal membrane by the shimmering see-through godot/materials/ps1_portal.tres
   * terrain and solid scenery get a static trimesh collision body
 
 Run from the repo root after regenerating the assets, then let Godot reimport:
@@ -20,6 +21,9 @@ CATEGORIES = ["terrain", "scenery", "weapons", "pickups", "enemies", "viewmodel"
 
 # Scenery you walk through rather than bump into.
 NO_COLLISION = {"grass_tuft", "flowers", "skull_pile", "bush"}
+# Models with a walk-through membrane. scripts/portal.gd builds their frame collision
+# at runtime, since a trimesh of the whole model would make the membrane solid.
+PORTALS = {"portal"}
 COLLIDES = {"terrain", "scenery"}
 
 PALETTE_IMPORT = """[remap]
@@ -36,6 +40,13 @@ detect_3d/compress_to=0
 
 
 def glb_import(name, collision):
+    portal = ""
+    if name in PORTALS:
+        portal = ''',
+"PS1_Portal": {
+"use_external/enabled": true,
+"use_external/path": "res://materials/ps1_portal.tres"
+}'''
     nodes = ""
     if collision:
         # shape_type 2 = trimesh; body_type 0 = static
@@ -72,7 +83,7 @@ _subresources={{
 "PS1_Palette": {{
 "use_external/enabled": true,
 "use_external/path": "res://materials/ps1_palette.tres"
-}}
+}}{portal}
 }}{nodes}
 }}
 '''
@@ -103,7 +114,7 @@ def main():
             name = f[:-4]
             dst = os.path.join(DST, cat, f)
             shutil.copy2(os.path.join(SRC, cat, f), dst)
-            write(dst + ".import", glb_import(name, cat in COLLIDES and name not in NO_COLLISION))
+            write(dst + ".import", glb_import(name, cat in COLLIDES and name not in NO_COLLISION | PORTALS))
             count += 1
     print(f"synced {count} models + palette into {DST}")
 

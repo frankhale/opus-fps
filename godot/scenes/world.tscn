@@ -73,7 +73,7 @@ light_angular_distance = 5.0
 
 [node name="GroundMist" type="FogVolume" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
-size = Vector3(128, 5, 128)
+size = Vector3(200, 5, 200)
 material = SubResource("FogMaterial_ground")
 
 [node name="Level" parent="." instance=ExtResource("1_level")]

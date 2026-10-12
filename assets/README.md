@@ -23,7 +23,7 @@ Each sheet shows every model with its name, triangle count and size. Single-mode
 
 ## Palette
 
-Every model uses one shared 128×64 texture, `palette.png`. It is an 8×4 grid of 16 px swatches with a little pixel noise. Each face's UVs fall inside a single swatch, so every face reads as one flat color. Glowing parts (flames, pickups, eyes, keys) use a second material, `PS1_Glow`, which samples the same texture as emissive color.
+Every model uses one shared 128×64 texture, `palette.png`. It is an 8×4 grid of 16 px swatches with a little pixel noise. Each face's UVs fall inside a single swatch, so every face reads as one flat color. Glowing parts (flames, pickups, eyes, keys) use a second material, `PS1_Glow`, which samples the same texture as emissive color. A portal's membrane uses a third material, `PS1_Portal`, meant to be replaced in the engine by an animated see-through shader.
 
 | Row | Colors |
 |-----|--------|
@@ -39,7 +39,7 @@ The texture sampler is set to nearest filtering. For the full PS1 look, also tur
 ## Conventions (glTF, Y-up, meters)
 
 - **terrain/**: 8×8 m tiles with their origin at the center. Each tile's edges sit at height 0, so tiles placed on an 8 m grid connect seamlessly. `terrain_cliff` is an 8 m wall segment that tiles along X. `terrain_mountain` is a 30 m backdrop piece.
-- **scenery/**: origin at ground level. `fence_wood` is a 2 m segment with a post only at its -X end, so use `fence_post` to cap the last segment. `stone_wall` tiles every 4 m.
+- **scenery/**: origin at ground level. `fence_wood` is a 2 m segment with a post only at its -X end, so use `fence_post` to cap the last segment. `stone_wall` tiles every 4 m. `portal` is a stone ring gate sunk into a low dais with sloped edges, facing +Z (you can walk through either side). Its membrane is a flat disc (`PS1_Portal`) in the XY plane, centered 0.885 m up with a 1.45 m radius. The ring's buried bottom stones are left out, so the way through is a flat floor about 2.5 m wide.
 - **weapons/**: origin at the grip, with the barrel pointing -Z (the direction the camera looks). They are real-world scale, so scale them up for first-person viewmodels.
 - **pickups/**: origin at the base, sized about 0.3–0.7 m. Spin or bob them in game.
 - **viewmodel/**: first-person arm parts: right and left hands closed around a pistol-style grip, a left support hand for barrels and handguards, and a forearm with a jacket sleeve. Each hand's origin is the centre of what it holds. The forearm's origin is the wrist, and it runs 0.7 m toward the elbow.

@@ -8,9 +8,9 @@ extends Control
 ## Viewport whose World3D is drawn (the game's SubViewport).
 @export var world_viewport_path: NodePath
 ## Half-width of the area shown, in meters, centered on the world origin.
-@export var world_extent := 66.0
+@export var world_extent := 96.0
 ## Render resolution of the whole map (about 0.44 m per pixel at the default extent).
-@export var map_pixels := 300
+@export var map_pixels := 440
 ## Map pixels visible across the corner minimap (128 px is about 56 m, under half
 ## the map's width, so the player can see where they are in the level).
 @export var window_pixels := 128

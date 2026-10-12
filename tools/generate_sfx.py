@@ -12,6 +12,8 @@ the world, written straight into the Godot project at godot/assets/sfx/.
   explosion_small/large.wav, dry_fire.wav, pickup_weapon/ammo.wav, respawn.wav, heal.wav
   eye_alert/charge/fire/hurt/die.wav, player_hurt.wav   enemy and pain sounds
   hitmarker.wav, killmarker.wav   hit confirmation ticks
+  portal_hum.wav     portal drone, seamless loop
+  teleport.wav       rising shimmer whoosh when passing through a portal
 
 Loop files get a .import that tells Godot to loop them. Run from the repo root:
   python3 tools/generate_sfx.py
@@ -253,6 +255,30 @@ def creature_sounds(rng):
                                 [0.0] * int(0.05 * RATE) + tone(n, 1100, 0.04, 0.0005, (0.8, 0.3, 0.0))), 0.55)
 
 
+def portal_sounds(rng):
+    """The portal: a beating, airy drone and a rising whoosh for going through."""
+    length = 4.0
+    n = int((length + 0.5) * RATE)
+    # Detuned pairs beat slowly; whole-cycle frequencies over `length` keep the loop seamless.
+    drone = [0.5 * math.sin(2 * math.pi * 55 * i / RATE) + 0.35 * math.sin(2 * math.pi * 110 * i / RATE)
+             + 0.35 * math.sin(2 * math.pi * 111.5 * i / RATE) + 0.12 * math.sin(2 * math.pi * 331.25 * i / RATE)
+             for i in range(n)]
+    air = highpass(lowpass(noise(n, rng), 0.25), 0.05)
+    wob = [0.8 + 0.2 * math.sin(2 * math.pi * 0.5 * i / RATE) for i in range(n)]
+    write("portal_hum.wav", loopable([(d + a * 0.5) * w for d, a, w in zip(drone, air, wob)], 0.5), 0.5)
+
+    n = int(1.0 * RATE)
+    rise, ph = [], 0.0
+    for i in range(n):
+        ph += 2 * math.pi * (180 + 1500 * (i / n) ** 2) / RATE
+        rise.append(math.sin(ph) + 0.4 * math.sin(2 * ph) + 0.2 * math.sin(3.01 * ph))
+    swell = [min(i / (0.35 * RATE), 1.0) * math.exp(-max(i - 0.35 * RATE, 0) / (0.18 * RATE)) for i in range(n)]
+    whoosh = [s * e for s, e in zip(lowpass(noise(n, rng), 0.3), swell)]
+    sparkle = mix(*[[0.0] * int((0.25 + k * 0.06) * RATE) + tone(n, f, 0.12, 0.003, (1.0, 0.0, 0.2))
+                    for k, f in enumerate((1046, 1318, 1568, 2093))])
+    write("teleport.wav", mix([r * e * 0.6 for r, e in zip(rise, swell)], whoosh, [x * 0.35 for x in sparkle])[:n], 0.75)
+
+
 def generate():
     os.makedirs(OUT, exist_ok=True)
     for i in range(5):
@@ -297,8 +323,9 @@ def generate():
 
     weapon_sounds(random.Random(11))
     creature_sounds(random.Random(13))
+    portal_sounds(random.Random(17))
 
-    for name in ("slide_loop.wav", "wind_loop.wav"):
+    for name in ("slide_loop.wav", "wind_loop.wav", "portal_hum.wav"):
         path = os.path.join(OUT, name + ".import")
         uid = None
         if os.path.exists(path):

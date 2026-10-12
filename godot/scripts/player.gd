@@ -17,6 +17,7 @@ signal damaged(amount: float, from: Vector3)
 signal died
 signal respawned
 signal message(text: String)
+signal teleported
 
 @export_group("Speed")
 @export var walk_speed := 5.0
@@ -128,6 +129,13 @@ func _respawn() -> void:
 	dead = false
 	health_changed.emit(health, max_health)
 	respawned.emit()
+
+
+## Moves the body instantly (portals). Head pitch is kept; yaw comes from `to`.
+func teleport(to: Transform3D, new_velocity: Vector3) -> void:
+	global_transform = to
+	velocity = new_velocity
+	teleported.emit()
 
 
 func _unhandled_input(event: InputEvent) -> void:

@@ -1,0 +1,18 @@
+[gd_resource type="ShaderMaterial" load_steps=2 format=3]
+
+[ext_resource type="Shader" path="res://materials/portal.gdshader" id="1"]
+
+[resource]
+resource_name = "PS1_Portal"
+render_priority = 1
+shader = ExtResource("1")
+shader_parameter/center = Vector2(0, 0.885)
+shader_parameter/radius = 1.45
+shader_parameter/deep_color = Color(0.04, 0.22, 0.75, 1)
+shader_parameter/bright_color = Color(0.45, 0.85, 1, 1)
+shader_parameter/clarity = 0.75
+shader_parameter/distortion = 0.006
+shader_parameter/swirl_speed = 0.6
+shader_parameter/rim_energy = 1.8
+shader_parameter/posterize = 5.0
+shader_parameter/snap_scale = 1.0
