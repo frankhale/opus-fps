@@ -1401,6 +1401,57 @@ def portal(b):
 
 
 
+@asset("scenery")
+def conex(b):
+    """20 ft military CONEX shipping container (6.06 x 2.44 x 2.59 m), long along X,
+    cargo doors at the +X end. Corrugated olive-drab walls inside a dark steel frame."""
+    L, W, H = 6.06, 2.44, 2.59
+    body = {"olive": 8, "dirt": 1}  # the odd rust-stained panel
+    # The wall behind the ribs is dark so the grooves between them read as shadow.
+    b.box((L - 0.2, W - 0.12, H - 0.24), (0, 0, H / 2), color="dsoil")
+    # Corrugation: vertical ribs standing proud of the long walls and the closed end.
+    n = 20
+    for k in range(n):
+        x = -L / 2 + 0.3 + (L - 0.6) * (k + 0.5) / n
+        for sy in (-1, 1):
+            b.box((0.15, 0.05, H - 0.3), (x, sy * (W / 2 - 0.06), H / 2), color=body)
+    for k in range(7):
+        y = -W / 2 + 0.25 + (W - 0.5) * (k + 0.5) / 7
+        b.box((0.05, 0.15, H - 0.3), (-L / 2 + 0.06, y, H / 2), color=body)
+    b.box((L - 0.3, W - 0.3, 0.04), (0, 0, H - 0.1), color="olive")  # roof panel
+    # Frame: corner posts, top and bottom rails, with corner castings at every corner.
+    frame = "dgrass"
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            b.box((0.16, 0.16, H), (sx * (L / 2 - 0.08), sy * (W / 2 - 0.08), H / 2), color=frame)
+            for z in (0.06, H - 0.06):
+                b.box((0.19, 0.17, 0.12), (sx * (L / 2 - 0.09), sy * (W / 2 - 0.085), z), color="gunmetal")
+    for sy in (-1, 1):
+        b.box((L - 0.3, 0.12, 0.16), (0, sy * (W / 2 - 0.06), 0.08), color=frame)
+        b.box((L - 0.3, 0.12, 0.12), (0, sy * (W / 2 - 0.06), H - 0.06), color=frame)
+        for x in (-0.9, 0.9):  # forklift pockets
+            b.box((0.36, 0.02, 0.1), (x, sy * (W / 2 - 0.005), 0.08), color="black")
+    for sx in (-1, 1):
+        b.box((0.12, W - 0.3, 0.16), (sx * (L / 2 - 0.06), 0, 0.08), color=frame)
+        b.box((0.12, W - 0.3, 0.2), (sx * (L / 2 - 0.06), 0, H - 0.1), color=frame)
+    # Cargo doors: two leaves, each with two locking bars, cam keepers and a handle.
+    dx = L / 2 - 0.04
+    for side in (-1, 1):
+        y0 = side * (W / 4 - 0.02)
+        b.box((0.04, W / 2 - 0.2, H - 0.42), (dx, y0, H / 2), color="olive")
+        for k in range(4):  # shallow horizontal door corrugation
+            b.box((0.03, W / 2 - 0.28, 0.12), (dx + 0.03, y0, 0.55 + k * 0.5), color=body)
+        for y in (y0 - side * 0.22, y0 + side * 0.22):
+            b.cyl(0.022, 0.022, H - 0.36, seg=6, loc=(dx + 0.08, y, H / 2), color="steel")
+            for z in (0.25, H - 0.25):
+                b.box((0.06, 0.08, 0.08), (dx + 0.06, y, z), color="gunmetal")
+            b.box((0.05, 0.03, 0.32), (dx + 0.11, y + side * 0.1, 1.15), rot=(0, 0, 0), color="steel")
+        for z in (0.5, 1.3, 2.1):  # hinges on the outer edge
+            b.box((0.06, 0.1, 0.14), (dx + 0.03, side * (W / 2 - 0.16), z), color="gunmetal")
+    b.box((0.02, 0.3, 0.18), (dx + 0.06, -W / 4, 1.75), color="white")  # data plate
+    b.box((0.03, 0.04, H - 0.4), (dx + 0.02, 0, H / 2), color="black")  # seam between leaves
+
+
 # ---------------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------------

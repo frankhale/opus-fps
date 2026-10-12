@@ -351,7 +351,8 @@ func build_crossroads() -> void:
 	place("Crossroads", "log_fallen", 8.0, ROAD_Z + 5.0, 80.0)
 
 
-## Abandoned military outpost: tents, a watchtower, supply stacks and a fenced yard.
+## Abandoned military outpost: tents, a watchtower, supply stacks, shipping containers
+## and a fenced yard.
 func build_outpost() -> void:
 	var g := "Outpost"
 	place(g, "watchtower", -46.0, 52.0, 15.0)
@@ -372,6 +373,11 @@ func build_outpost() -> void:
 	place(g, "stone_wall", -38.0, 57.0, 0.0)
 	place(g, "stone_wall", -28.0, 57.0, 4.0)
 	place(g, "skull_pile", -32.5, 49.5)
+	# Shipping containers: a stack of two by the supply barrels on the east side, and one
+	# behind the watchtower with its doors (+X) facing into the camp.
+	place(g, "conex", -22.6, 51.0, 90.0)
+	place(g, "conex", -22.5, 51.3, 93.0, ground(-22.6, 51.0) + 2.59)
+	place(g, "conex", -47.0, 56.5, 0.0)
 
 
 ## A lonely homestead: two cabins facing the road, a well, a fenced yard and oaks.
