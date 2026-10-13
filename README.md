@@ -1,4 +1,4 @@
-# Opus FPS
+# Opus FPS - A experiment with Opus 5.5 creating an old school looking Godot based FPS
 
 ![In game: a rocket sets off the gas cans at the outpost, throwing barrels into the air, with a demon and a floating eye nearby](docs/screenshot.jpg)
 
