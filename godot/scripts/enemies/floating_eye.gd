@@ -1,12 +1,12 @@
 class_name FloatingEye
-extends CharacterBody3D
+extends Enemy
 ## The floating eye: hovers around its home until it sees the player, screeches and
 ## gives chase, holding a preferred distance while strafing. It telegraphs each
 ## attack (the eye glows and whines) before spitting a slow, dodgeable bolt.
-## Shots flash it red and knock it back; when killed it bursts, drops loot and
-## respawns at home a while later (out of the player's sight). Its rigged tentacles
-## are animated procedurally: a wave runs down each one, they trail behind as it
-## moves, flare out while it charges a shot and twitch when it's hit.
+## Shots flash it red and knock it back; when killed it bursts in gore (loot and
+## respawning come from Enemy). Its rigged tentacles are animated procedurally: a
+## wave runs down each one, they trail behind as it moves, flare out while it charges
+## a shot and twitch when it's hit.
 
 const BOLT := preload("res://weapons/enemy_eye_bolt.tres")
 const MODEL := preload("res://assets/enemies/enemy_floating_eye.glb")
@@ -17,50 +17,19 @@ const SOUNDS := {
 	"hurt": preload("res://assets/sfx/eye_hurt.wav"),
 	"die": preload("res://assets/sfx/eye_die.wav"),
 }
-const LOOT_HEALTH_MODEL := preload("res://assets/pickups/pickup_health_vial.glb")
-const AMMO_MODELS := {
-	"bullets": preload("res://assets/pickups/pickup_ammo_bullets.glb"),
-	"shells": preload("res://assets/pickups/pickup_ammo_shells.glb"),
-	"rockets": preload("res://assets/pickups/pickup_ammo_rockets.glb"),
-	"cells": preload("res://assets/pickups/pickup_ammo_cells.glb"),
-}
-## Loot amounts are half an ammo box.
-const LOOT_AMMO := {"bullets": 15, "shells": 4, "rockets": 2, "cells": 20}
-## Physics layer bit for enemies (layer 3).
-const ENEMY_LAYER := 4
 
-@export var max_health := 80.0
-@export var sight_range := 26.0
-## Once alerted it keeps chasing this long after losing sight of the player.
-@export var memory := 4.0
 @export var preferred_distance := 11.0
 @export var speed := 4.5
 @export var hover_height := 2.6
 @export var attack_interval := Vector2(1.6, 2.6)
 ## Wind-up before each shot (glow and whine), so the player can react.
 @export var telegraph_time := 0.45
-@export var respawn_time := 45.0
-@export var model_scale := 1.6
 
-var health := 0.0
-var dead := false
-var alerted := false
-
-var _player: Node3D
-var _home := Vector3.ZERO
-var _model: Node3D
-var _meshes: Array[GeometryInstance3D] = []
-var _flash: StandardMaterial3D
-var _flash_amount := 0.0
 var _charge := 0.0
 var _attack_timer := 0.0
-var _memory_timer := 0.0
 var _wander := Vector3.ZERO
 var _wander_timer := 0.0
 var _strafe_dir := 1.0
-var _hurt_cooldown := 0.0
-var _t := 0.0
-var _audio: AudioStreamPlayer3D
 var _skeleton: Skeleton3D
 ## One entry per tentacle: {"bones": [bone indices, root first], "radial": outward
 ## direction in skeleton space, "phase": wave offset}.
@@ -69,10 +38,11 @@ var _tentacles: Array[Dictionary] = []
 var _drag := Vector3.ZERO
 
 
+func _init() -> void:
+	model_scale = 1.6
+
+
 func _ready() -> void:
-	add_to_group("enemies")
-	collision_layer = ENEMY_LAYER
-	collision_mask = 1
 	motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
 	var shape := CollisionShape3D.new()
 	var sphere := SphereShape3D.new()
@@ -80,26 +50,9 @@ func _ready() -> void:
 	shape.shape = sphere
 	add_child(shape)
 
-	_model = MODEL.instantiate()
-	_model.scale = Vector3.ONE * model_scale
+	_setup(MODEL, SOUNDS)
 	_model.rotation.y = PI  # the eye looks down its +Z; this node "faces" -Z
-	add_child(_model)
-	for g in _model.find_children("*", "GeometryInstance3D", true, false):
-		_meshes.append(g)
 	_setup_tentacles()
-	_flash = StandardMaterial3D.new()
-	_flash.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_flash.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	_flash.albedo_color = Color(0, 0, 0)
-
-	_audio = AudioStreamPlayer3D.new()
-	_audio.unit_size = 6.0
-	_audio.max_polyphony = 3
-	add_child(_audio)
-
-	_home = global_position
-	health = max_health
-	_t = randf() * TAU
 	_strafe_dir = 1.0 if randf() < 0.5 else -1.0
 
 
@@ -146,10 +99,7 @@ func _physics_process(delta: float) -> void:
 	_model.rotation.z = sin(_t * 0.9) * 0.06
 	_animate_tentacles(delta)
 	_flash_amount = move_toward(_flash_amount, 0.0, delta * 6.0)
-	var glow := maxf(_flash_amount, _charge)
-	_flash.albedo_color = Color(glow, glow * 0.15, glow * 0.1)
-	for m in _meshes:
-		m.material_overlay = _flash if glow > 0.01 else null
+	_set_glow(Color(1.0, 0.15, 0.1), maxf(_flash_amount, _charge))
 
 
 ## Tentacle bones are named tentacle_<k>_<j>, j = 0 at the root (see the asset
@@ -204,55 +154,12 @@ func _animate_tentacles(delta: float) -> void:
 			_skeleton.set_bone_pose_rotation(bones[j], local_rest * (rest.inverse() * q * rest))
 
 
-func _player_center() -> Vector3:
-	return _player.global_position + Vector3(0.0, 1.3, 0.0)
-
-
-func _update_awareness(delta: float) -> void:
-	if _player == null:
-		# Looked up lazily: the level (and its enemies) is ready before the player is.
-		_player = get_tree().get_first_node_in_group("player")
-	if _player == null or _player.get("dead"):
-		alerted = false
-		return
-	var sees := global_position.distance_to(_player_center()) < sight_range and _line_of_sight()
-	if sees:
-		if not alerted:
-			_alert()
-		_memory_timer = memory
-	elif alerted:
-		_memory_timer -= delta
-		if _memory_timer <= 0.0:
-			alerted = false
-			_charge = 0.0
-
-
-func _alert() -> void:
-	alerted = true
+func _on_alert() -> void:
 	_attack_timer = randf_range(0.8, 1.4)
-	_play("alert", 2.0)
 
 
-## Clear if nothing but the player (whose body is on layer 1 too) is in the way.
-func _line_of_sight() -> bool:
-	var q := PhysicsRayQueryParameters3D.create(global_position, _player_center(), 1, [get_rid()])
-	var hit := get_world_3d().direct_space_state.intersect_ray(q)
-	return hit.is_empty() or hit.collider == _player
-
-
-func _ground_y() -> float:
-	var from := global_position + Vector3.UP * 2.0
-	var q := PhysicsRayQueryParameters3D.create(from, from + Vector3.DOWN * 60.0, 1, [get_rid()])
-	var hit := get_world_3d().direct_space_state.intersect_ray(q)
-	return hit.position.y if hit else 0.0
-
-
-func _face(dir: Vector3, delta: float, rate: float) -> void:
-	var flat := Vector3(dir.x, 0.0, dir.z)
-	if flat.length() < 0.01:
-		return
-	var target := atan2(-flat.x, -flat.z)
-	rotation.y = lerp_angle(rotation.y, target, 1.0 - exp(-rate * delta))
+func _on_lost_sight() -> void:
+	_charge = 0.0
 
 
 func _update_attack(delta: float) -> void:
@@ -283,31 +190,8 @@ func _fire() -> void:
 	_play("fire", 0.0)
 
 
-func take_damage(amount: float, _at := Vector3.ZERO, dir := Vector3.ZERO) -> void:
-	if dead:
-		return
-	health -= amount
-	_flash_amount = 1.0
-	velocity += dir * clampf(amount * 0.15, 1.0, 8.0)
-	if not alerted:
-		_alert()
-	_memory_timer = memory
-	if health <= 0.0:
-		_die()
-	elif _hurt_cooldown <= 0.0:
-		_hurt_cooldown = 0.25
-		_play("hurt", 0.0)
-
-
-func _die() -> void:
-	dead = true
-	alerted = false
-	collision_layer = 0
-	_model.visible = false
+func _on_death() -> void:
 	_charge = 0.0
-	for m in _meshes:
-		m.material_overlay = null
-
 	var boom := Explosion.new()
 	boom.size = 0.9
 	boom.color = Color(0.7, 0.12, 0.2)
@@ -318,62 +202,3 @@ func _die() -> void:
 		add_child(gore)
 		gore.emitting = true
 		get_tree().create_timer(1.2).timeout.connect(gore.queue_free)
-	_play("die", 4.0)
-	_drop_loot()
-	get_tree().create_timer(respawn_time).timeout.connect(_try_respawn)
-
-
-func _drop_loot() -> void:
-	var drops := 1 if randf() < 0.6 else 2
-	var wm: WeaponManager = _player.get_node_or_null("WeaponManager") if _player else null
-	var owned_types: Array[String] = []
-	if wm:
-		for w in wm.weapons:
-			if not owned_types.has(w.ammo_type):
-				owned_types.append(w.ammo_type)
-	if owned_types.is_empty():
-		owned_types.append("bullets")
-	var ground := _ground_y()
-	for i in drops:
-		var pk := Pickup.new()
-		if randf() < 0.35:
-			pk.kind = Pickup.Kind.HEALTH
-			pk.amount = 15
-			pk.model = LOOT_HEALTH_MODEL
-			pk.model_scale = 2.0
-		else:
-			var t: String = owned_types[randi() % owned_types.size()]
-			pk.kind = Pickup.Kind.AMMO
-			pk.ammo_type = t
-			pk.amount = LOOT_AMMO[t]
-			pk.model = AMMO_MODELS[t]
-		pk.one_shot = true
-		pk.lifetime = 30.0
-		var a := randf() * TAU
-		var land := Vector3(global_position.x + cos(a) * 1.2, ground, global_position.z + sin(a) * 1.2)
-		get_parent().add_child(pk)
-		pk.global_position = land
-		pk.pop_from(global_position)
-
-
-func _try_respawn() -> void:
-	# Don't pop back in right in front of the player.
-	if _player and _player.global_position.distance_to(_home) < 18.0:
-		get_tree().create_timer(5.0).timeout.connect(_try_respawn)
-		return
-	global_position = _home
-	velocity = Vector3.ZERO
-	health = max_health
-	dead = false
-	collision_layer = ENEMY_LAYER
-	_model.visible = true
-	_model.scale = Vector3.ZERO
-	create_tween().tween_property(_model, "scale", Vector3.ONE * model_scale, 0.6) \
-		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-
-
-func _play(sound: String, db: float) -> void:
-	_audio.stream = SOUNDS[sound]
-	_audio.volume_db = db
-	_audio.pitch_scale = randf_range(0.92, 1.08)
-	_audio.play()

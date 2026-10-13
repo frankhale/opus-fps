@@ -5,7 +5,7 @@ extends SceneTree
 ## A dirt road runs north past a village, a campsite and a pond to some ruins, and a
 ## crossroads south of the start leads west to a military outpost and east to a
 ## homestead. An overgrown graveyard and a second pond fill the north. Floating eyes
-## guard each area; weapons, ammo and health are spread around, and gems are tucked
+## guard each area and golems the north; weapons, ammo and health are spread around, and gems are tucked
 ## around every landmark. A pair of linked
 ## portals joins the west end of the crossroads road to the far north end of the main
 ## road. A creek crosses the south of the valley from cliff to cliff, under a bridge on
@@ -18,6 +18,7 @@ extends SceneTree
 const OUT := "res://scenes/level.tscn"
 const PICKUP := preload("res://scripts/weapons/pickup.gd")
 const EYE := preload("res://scripts/enemies/floating_eye.gd")
+const GOLEM := preload("res://scripts/enemies/golem.gd")
 const PORTAL := preload("res://scripts/portal.gd")
 const CAMPFIRE := preload("res://scripts/campfire.gd")
 const TERRAIN := preload("res://scripts/terrain.gd")
@@ -588,8 +589,9 @@ func pickup(x: float, z: float, y: float) -> Area3D:
 	return pk
 
 
-## Floating eyes, roughly one per area. None can see the spawn point, so the player
-## has time to grab the pistol first.
+## Floating eyes, roughly one per area, and three golems in the far north (the ruins,
+## the graveyard and the north pond). None can see the spawn point, so the player has
+## time to grab the pistol first.
 func build_enemies() -> void:
 	for v in [Vector2(0, -30), Vector2(16, -14), Vector2(26, 12), Vector2(-26, 12), Vector2(-36, 50),
 			Vector2(38, 48), Vector2(-36, -42), Vector2(-30, -49), Vector2(32, -40)]:
@@ -599,6 +601,13 @@ func build_enemies() -> void:
 		eye.position = Vector3(v.x, ground(v.x, v.y) + 2.6, v.y)
 		groups["Enemies"].add_child(eye, true)
 		eye.owner = level
+	for v in [Vector2(1.5, -29.0), Vector2(-36.0, -44.0), Vector2(32.0, -31.0)]:
+		var golem := CharacterBody3D.new()
+		golem.set_script(GOLEM)
+		golem.name = "Golem"
+		golem.position = Vector3(v.x, ground(v.x, v.y) + 0.85, v.y)
+		groups["Enemies"].add_child(golem, true)
+		golem.owner = level
 
 
 ## Two linked portals, each facing (+Z) back along its road: one at the west end of the

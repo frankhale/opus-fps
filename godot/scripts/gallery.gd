@@ -19,6 +19,13 @@ const CATEGORIES := ["weapons", "pickups", "ammo", "viewmodel", "enemies", "scen
 const SCALE := {"weapons": 2.0, "pickups": 1.5, "ammo": 4.0, "viewmodel": 2.0}
 ## Turned about Y (degrees) so they're seen side-on: weapons point their barrels -Z.
 const TURN := {"weapons": 90.0}
+## The campfire burns as it does in the game (scripts/campfire.gd), whose fire is sized
+## for the model at its level scale.
+const CAMPFIRE := preload("res://scripts/campfire.gd")
+const CAMPFIRE_LEVEL_SCALE := 1.2
+## The golem floats on its electric arcs (scripts/enemies/electric_arcs.gd) at the
+## height it hovers in the game.
+const GOLEM_HOVER := 0.85
 ## Gap between neighbouring models and between rows, in meters.
 const GAP := 1.2
 const ROW_GAP := 8.0
@@ -85,11 +92,20 @@ func build() -> void:
 			inst.scale = Vector3.ONE * s
 			inst.rotation_degrees.y = TURN.get(cat, 0.0)
 			var box := Transform3D(Basis(Vector3.UP, inst.rotation.y)) * _bounds(inst)
+			if n == "enemy_golem":
+				box = _float_golem(inst, box, s)
 			# Each model gets a slot at least as wide as its name label.
 			var label_w := ThemeDB.fallback_font.get_string_size(n, HORIZONTAL_ALIGNMENT_LEFT, -1,
 				NAME_SIZE).x * NAME_PIXEL
 			items.append({"node": inst, "box": AABB(box.position * s, box.size * s),
 				"slot": maxf(box.size.x * s, label_w)})
+			if n == "campfire":
+				var fire := Node3D.new()
+				fire.set_script(CAMPFIRE)
+				fire.name = "Fire"
+				fire.size = s / CAMPFIRE_LEVEL_SCALE
+				fire.scale = Vector3.ONE / s  # the effect is sized in world meters
+				inst.add_child(fire)
 		var lines := [[]]
 		var width := 0.0
 		for it in items:
@@ -138,6 +154,23 @@ func build() -> void:
 		2.0 * ground.extent(), 2.0 * ground.extent()))
 	for s in standing:
 		(s[0] as Node3D).position.y += _ground_height(ground, s[1])
+
+
+## Hangs the arcs under the golem and returns its bounds stretched down to the ground,
+## so it is laid out (and its name placed) floating at its in-game height.
+func _float_golem(inst: Node3D, box: AABB, s: float) -> AABB:
+	var arcs := ElectricArcs.new()
+	arcs.name = "Arcs"
+	arcs.color = Golem.CHARGE_COLOR
+	arcs.drop = GOLEM_HOVER / s
+	arcs.spread = Golem.ARC_SPREAD / s
+	var points := PackedVector3Array()
+	for p: Vector3 in Golem.LEG_POINTS:
+		points.append(p)
+	arcs.sources = points
+	inst.add_child(arcs)
+	var hover := GOLEM_HOVER / s
+	return AABB(box.position - Vector3(0.0, hover, 0.0), box.size + Vector3(0.0, hover, 0.0))
 
 
 ## Model names in a category folder, sorted.

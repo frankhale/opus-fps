@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="WeaponData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/weapon_data.gd" id="1_data"]
+
+[resource]
+script = ExtResource("1_data")
+display_name = "Ball Lightning"
+projectile_speed = 12.0
+projectile_size = 0.16
+projectile_color = Color(0.5, 0.85, 1, 1)
+glow_energy = 3.5
+explosion_color = Color(0.45, 0.8, 1, 1)
+damage = 16.0

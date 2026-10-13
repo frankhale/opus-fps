@@ -14,6 +14,8 @@ the world, written straight into the Godot project at godot/assets/sfx/.
   hitmarker.wav, killmarker.wav   hit confirmation ticks
   portal_hum.wav     portal drone, seamless loop
   teleport.wav       rising shimmer whoosh when passing through a portal
+  golem_hum.wav      the golem's electric buzz, seamless loop
+  golem_alert/charge/fire/shock/hurt/die.wav   the golem: grinding stone and electricity
 
 Loop files get a .import that tells Godot to loop them. Run from the repo root:
   python3 tools/generate_sfx.py
@@ -279,6 +281,79 @@ def portal_sounds(rng):
     write("teleport.wav", mix([r * e * 0.6 for r, e in zip(rise, swell)], whoosh, [x * 0.35 for x in sparkle])[:n], 0.75)
 
 
+def golem_sounds(rng):
+    """The golem: grinding, clacking stone and the electricity it floats on."""
+    def buzz(n, f0, f1, harm=(1.0, 0.0, 0.5, 0.0, 0.3, 0.0, 0.2)):
+        """Mains-style electric buzz (odd harmonics), gliding from f0 to f1."""
+        out, ph = [], 0.0
+        for i in range(n):
+            ph += 2 * math.pi * (f0 + (f1 - f0) * i / n) / RATE
+            out.append(sum(a * math.sin((j + 1) * ph) for j, a in enumerate(harm)))
+        return out
+
+    def crackle(n, density, gain=1.0):
+        """Spitting electric sparks: sharp bright clicks at random."""
+        x = [0.0] * n
+        for _ in range(int(density * n / RATE)):
+            start, amp = rng.randrange(n), rng.uniform(0.3, 1.0) * gain
+            for j in range(rng.randint(20, 120)):
+                if start + j < n:
+                    x[start + j] += rng.uniform(-1, 1) * amp * math.exp(-j / 25)
+        return highpass(x, 0.35)
+
+    def clack(n, delay, pitch, gain):
+        """One stone knocking on another: a dull click with a short hollow ring."""
+        d = int(delay * RATE)
+        k = int(0.08 * RATE)
+        hit = [s * e for s, e in zip(lowpass(noise(k, rng), 0.5), env(k, 0.0005, 0.008))]
+        ring = tone(k, pitch, 0.02, 0.0005, (1.0, 0.0, 0.4))
+        body = [(h + r * 0.5) * gain for h, r in zip(hit, ring)]
+        return ([0.0] * d + body + [0.0] * n)[:n]
+
+    def rumble(n, darkness, attack, decay):
+        return [s * e for s, e in zip(lowpass(lowpass(noise(n, rng), darkness), darkness), env(n, attack, decay))]
+
+    # Hum: a low buzz with a slow throb and sparks; whole cycles over the loop length.
+    length = 2.0
+    n = int((length + 0.2) * RATE)
+    throb = [0.8 + 0.2 * math.sin(2 * math.pi * 2 * i / (length * RATE)) for i in range(n)]
+    hum = [b * t * 0.6 for b, t in zip(lowpass(buzz(n, 60, 60), 0.3), throb)]
+    write("golem_hum.wav", loopable(mix(hum, crackle(n, 14, 0.35)), 0.2), 0.45)
+
+    # Alert: stone grinding awake, a heavy knock and a snap of current.
+    n = int(1.0 * RATE)
+    grind = [s * (0.6 + 0.4 * math.sin(2 * math.pi * 7 * i / RATE)) for i, s in enumerate(rumble(n, 0.08, 0.08, 0.35))]
+    write("golem_alert.wav", mix(grind, clack(n, 0.05, 260, 0.8), clack(n, 0.3, 180, 1.0),
+                                 [b * e * 0.4 for b, e in zip(buzz(n, 90, 140), env(n, 0.2, 0.3))], crackle(n, 30, 0.6)), 0.8)
+
+    # Charge: the buzz rises and the sparks thicken.
+    n = int(0.75 * RATE)
+    rise = [b * min(i / n * 1.4, 1.0) for i, b in enumerate(buzz(n, 70, 260))]
+    write("golem_charge.wav", mix([r * 0.6 for r in rise], [c * (i / n) for i, c in enumerate(crackle(n, 90))]), 0.6)
+
+    # Fire: a zap, a crack falling into a fizz.
+    n = int(0.45 * RATE)
+    crack = [s * e for s, e in zip(highpass(noise(n, rng), 0.3), env(n, 0.001, 0.02))]
+    zap = [b * e * 0.6 for b, e in zip(buzz(n, 900, 150, (1.0, 0.5, 0.3)), env(n, 0.002, 0.08))]
+    write("golem_fire.wav", mix(crack, zap, crackle(n, 40, 0.4)), 0.75)
+
+    # Shock: a thunderclap into the ground, a deep thump and crackling all around.
+    n = int(1.4 * RATE)
+    clap = [s * e for s, e in zip(highpass(noise(n, rng), 0.2), env(n, 0.001, 0.06))]
+    write("golem_shock.wav", mix(clap, [s * 0.9 for s in sweep_thump(n, 110, 40, 0.06, 0.25)],
+                                 rumble(n, 0.05, 0.005, 0.4), [c * math.exp(-i / (0.4 * RATE)) for i, c in enumerate(crackle(n, 120))]), 0.9)
+
+    # Hurt: chipped stone, two quick knocks and a spit of sparks.
+    n = int(0.3 * RATE)
+    write("golem_hurt.wav", mix(clack(n, 0.0, 520, 1.0), clack(n, 0.035, 380, 0.6), crackle(n, 40, 0.4)), 0.7)
+
+    # Death: the charge fizzles out and the boulders tumble apart.
+    n = int(1.8 * RATE)
+    fizzle = [b * e * 0.5 for b, e in zip(buzz(n, 160, 30), env(n, 0.005, 0.4))]
+    falls = mix(*[clack(n, rng.uniform(0.05, 1.2), rng.uniform(150, 400), rng.uniform(0.4, 1.0)) for _ in range(14)])
+    write("golem_die.wav", mix(fizzle, falls, rumble(n, 0.05, 0.02, 0.6), [c * math.exp(-i / (0.25 * RATE)) for i, c in enumerate(crackle(n, 100))]), 0.85)
+
+
 def generate():
     os.makedirs(OUT, exist_ok=True)
     for i in range(5):
@@ -324,8 +399,9 @@ def generate():
     weapon_sounds(random.Random(11))
     creature_sounds(random.Random(13))
     portal_sounds(random.Random(17))
+    golem_sounds(random.Random(19))
 
-    for name in ("slide_loop.wav", "wind_loop.wav", "portal_hum.wav"):
+    for name in ("slide_loop.wav", "wind_loop.wav", "portal_hum.wav", "golem_hum.wav"):
         path = os.path.join(OUT, name + ".import")
         uid = None
         if os.path.exists(path):
