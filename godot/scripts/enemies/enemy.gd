@@ -31,8 +31,10 @@ const ENEMY_LAYER := 4
 @export var knockback := 0.15
 ## Loot dropped on death: at least the first number of pickups, at most the second.
 @export var loot_drops := Vector2i(1, 2)
-## Gems dropped on death. They don't expire like the rest of the loot.
+## Gems dropped on death, along with the rest of the loot.
 @export var gem_drops := 1
+## Seconds before an untaken drop vanishes (it blinks for the last three).
+@export var loot_lifetime := 30.0
 
 var health := 0.0
 var dead := false
@@ -221,8 +223,7 @@ func _drop_loot() -> void:
 			pk.amount = LOOT_AMMO[t]
 			pk.model = AMMO_MODELS[t]
 		pk.one_shot = true
-		if pk.kind != Pickup.Kind.GEM:
-			pk.lifetime = 30.0
+		pk.lifetime = loot_lifetime
 		var a := randf() * TAU
 		var r := randf_range(0.8, 1.8)
 		var land := Vector3(global_position.x + cos(a) * r, ground, global_position.z + sin(a) * r)
