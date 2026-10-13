@@ -13,6 +13,13 @@ const TRAIL_START_DISTANCE := 2.0
 
 ## Physics layers (see WeaponManager): 1 world, 2 player, 4 enemies.
 const LAYER_ENEMIES := 4
+## Push given to a loose physics object (barrels) on a direct hit, in N·s per point of
+## damage, and the extra upward share that makes it hop.
+const KNOCK_PER_DAMAGE := 1.2
+const KNOCK_LIFT := 0.3
+## Impulse at the center of a splash (rockets) per point of splash damage, for
+## throwing physics props (see PhysicsProp.blast()).
+const BLAST_PER_DAMAGE := 1.5
 
 var data: WeaponData
 var velocity := Vector3.ZERO
@@ -91,10 +98,18 @@ func _physics_process(delta: float) -> void:
 	var query := PhysicsRayQueryParameters3D.create(from, to, collision_mask, exclude)
 	var hit := get_world_3d().direct_space_state.intersect_ray(query)
 	if hit:
-		var target: Object = hit.collider
-		if target and target.has_method("take_damage"):
+		var target := damage_target(hit.collider)
+		if target and target.has_method("take_shot"):
+			target.take_shot(data, hit.position)  # props that count hits (gas cans)
+		elif target:
 			target.take_damage(data.damage, hit.position, velocity.normalized())
 			_report_hit(target)
+		var loose := hit.collider as RigidBody3D
+		if loose:
+			# Pushed where it was hit, so off-center shots tip and spin it.
+			loose.freeze = false  # props stand frozen until first hit (see PhysicsProp)
+			loose.apply_impulse((velocity.normalized() + Vector3.UP * KNOCK_LIFT) * data.damage * KNOCK_PER_DAMAGE,
+				hit.position - loose.global_position)
 		explode(hit.position, hit.normal)
 		return
 	if data.proximity_radius > 0.0 and _enemy_near(to):
@@ -135,7 +150,8 @@ func _enemy_near(at: Vector3) -> bool:
 	return not get_world_3d().direct_space_state.intersect_shape(q, 1).is_empty()
 
 
-## Area damage to enemies near the impact, falling off linearly with distance.
+## Area damage to enemies near the impact, falling off linearly with distance. Gas
+## cans in range go up too, and barrels are thrown.
 func _splash(at: Vector3) -> void:
 	var sphere := SphereShape3D.new()
 	sphere.radius = data.splash_radius
@@ -152,6 +168,18 @@ func _splash(at: Vector3) -> void:
 			if amount > 1.0:
 				body.take_damage(amount, at, ((body as Node3D).global_position - at).normalized())
 				_report_hit(body)
+	GasCan.ignite_near(get_tree(), at, data.splash_radius)
+	PhysicsProp.blast(get_tree(), at, data.splash_radius, data.splash_damage * BLAST_PER_DAMAGE)
+
+
+## What takes damage when `collider` is hit: the collider itself, or the node it hands
+## damage on to (a model's imported collision body passes it to the model's script).
+static func damage_target(collider: Object) -> Object:
+	if collider == null:
+		return null
+	if collider.has_meta("damage_target"):
+		return collider.get_meta("damage_target")
+	return collider if collider.has_method("take_damage") else null
 
 
 func _report_hit(target: Object) -> void:

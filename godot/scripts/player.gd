@@ -5,6 +5,7 @@ extends CharacterBody3D
 ##  * jump with coyote time, input buffering, variable height and snappier falls
 ##  * automatic step-up over low ledges
 ##  * health: damage, healing, death and respawning at the start point
+##  * a count of the gems collected (god_mode: no damage, all weapons, unlimited ammo)
 ## Camera feel lives in camera_effects.gd and sounds in player_audio.gd; both react
 ## to this script's signals and public state.
 
@@ -18,6 +19,7 @@ signal died
 signal respawned
 signal message(text: String)
 signal teleported
+signal gems_changed(count: int)
 
 @export_group("Speed")
 @export var walk_speed := 5.0
@@ -72,6 +74,18 @@ var is_crouching := false
 var is_sliding := false
 var health := 100.0
 var dead := false
+## Gems collected (see Pickup); kept through death.
+var gems := 0
+## Set from the dev console: damage is ignored, and turning it on hands over every
+## weapon with unlimited ammo (see WeaponManager).
+var god_mode := false:
+	set(on):
+		god_mode = on
+		var wm := get_node_or_null("WeaponManager") as WeaponManager
+		if wm:
+			wm.infinite_ammo = on
+			if on:
+				wm.give_all_weapons()
 
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 var _coyote := 0.0
@@ -91,7 +105,7 @@ func _ready() -> void:
 
 
 func take_damage(amount: float, at := Vector3.ZERO, _dir := Vector3.ZERO) -> void:
-	if dead:
+	if dead or god_mode:
 		return
 	health = maxf(health - amount, 0.0)
 	health_changed.emit(health, max_health)
@@ -110,6 +124,14 @@ func heal(amount: float) -> bool:
 	health = minf(health + amount, max_health)
 	health_changed.emit(health, max_health)
 	message.emit("+%d health" % amount)
+	return true
+
+
+## Always taken: gems have no limit.
+func add_gems(amount: int) -> bool:
+	gems += amount
+	gems_changed.emit(gems)
+	message.emit("Picked up a gem" if amount == 1 else "Picked up %d gems" % amount)
 	return true
 
 

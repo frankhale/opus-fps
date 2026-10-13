@@ -1,20 +1,23 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/level.tscn" id="1_level"]
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="2_player"]
 [ext_resource type="AudioStream" path="res://assets/sfx/wind_loop.wav" id="3_wind"]
+[ext_resource type="Shader" path="res://materials/sky.gdshader" id="4_sky"]
 
-[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
-sky_top_color = Color(0.26, 0.5, 0.82, 1)
-sky_horizon_color = Color(0.68, 0.8, 0.9, 1)
-sky_curve = 0.18
-ground_bottom_color = Color(0.22, 0.21, 0.19, 1)
-ground_horizon_color = Color(0.58, 0.64, 0.68, 1)
-sun_angle_max = 18.0
-sun_curve = 0.08
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_sky"]
+shader = ExtResource("4_sky")
+shader_parameter/sky_top_color = Color(0.26, 0.5, 0.82, 1)
+shader_parameter/sky_horizon_color = Color(0.68, 0.8, 0.9, 1)
+shader_parameter/sky_curve = 0.18
+shader_parameter/ground_bottom_color = Color(0.22, 0.21, 0.19, 1)
+shader_parameter/ground_horizon_color = Color(0.58, 0.64, 0.68, 1)
+shader_parameter/sun_angle_max = 18.0
+shader_parameter/sun_curve = 0.08
 
 [sub_resource type="Sky" id="Sky_main"]
-sky_material = SubResource("ProceduralSkyMaterial_sky")
+sky_material = SubResource("ShaderMaterial_sky")
+process_mode = 3
 
 [sub_resource type="Environment" id="Environment_world"]
 background_mode = 2

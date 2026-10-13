@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3]
+[gd_scene load_steps=17 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Shader" path="res://materials/ps1_post.gdshader" id="2_post"]
@@ -10,6 +10,8 @@
 [ext_resource type="AudioStream" path="res://assets/sfx/killmarker.wav" id="8_kill"]
 [ext_resource type="Script" path="res://scripts/ammo_display.gd" id="9_ammo"]
 [ext_resource type="Script" path="res://scripts/health_bar.gd" id="10_health"]
+[ext_resource type="Script" path="res://scripts/dev_console.gd" id="11_console"]
+[ext_resource type="Script" path="res://scripts/gem_counter.gd" id="12_gems"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_post"]
 shader = ExtResource("2_post")
@@ -112,12 +114,13 @@ kill_sound = ExtResource("8_kill")
 
 
 [node name="Hint" type="Label" parent="HUD"]
+visible = false
 offset_left = 12.0
 offset_top = 10.0
 offset_right = 640.0
 offset_bottom = 60.0
 text = "WASD move  |  Mouse look  |  Space jump  |  Shift sprint  |  C / Ctrl crouch (slide while sprinting)
-Click fire  |  1-5 / wheel switch weapon  |  M toggle map  |  Esc release mouse  |  F1 toggle PS1 filter  |  F2 hide help  |  F11 / Cmd+Ctrl+F fullscreen  |  Cmd+1 model gallery  |  F12 screenshot  |  Cmd+Q quit"
+Click fire  |  1-5 / wheel switch weapon  |  M toggle map  |  Cmd+M hide map  |  Esc release mouse  |  F1 toggle PS1 filter  |  F2 hide help  |  F11 / Cmd+Ctrl+F fullscreen  |  Cmd+1 model gallery  |  F12 screenshot  |  ~ console  |  Cmd+Q quit"
 label_settings = SubResource("LabelSettings_hint")
 
 [node name="Minimap" type="Control" parent="HUD"]
@@ -187,3 +190,20 @@ offset_bottom = -25.0
 grow_vertical = 0
 mouse_filter = 2
 script = ExtResource("10_health")
+
+[node name="GemCounter" type="Control" parent="HUD"]
+layout_mode = 3
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -98.0
+offset_right = 224.0
+offset_bottom = -58.0
+grow_vertical = 0
+mouse_filter = 2
+script = ExtResource("12_gems")
+
+[node name="DevConsole" type="CanvasLayer" parent="."]
+layer = 10
+script = ExtResource("11_console")

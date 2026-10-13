@@ -63,6 +63,8 @@ const WRIST_LEFT_SUPPORT := Vector3(-0.036, -0.062, 0.08)
 var weapons: Array[WeaponData] = []
 var ammo := {}
 var current: WeaponData
+## Shots don't use up ammo (god mode).
+var infinite_ammo := false
 
 var _vm_viewport: SubViewport
 var _vm_camera: Camera3D
@@ -165,6 +167,23 @@ func give_weapon(w: WeaponData) -> bool:
 		_play(pickup_ammo_sound, -8.0)
 		message.emit("+%d %s" % [w.ammo_on_pickup, w.ammo_type])
 	return took_ammo
+
+
+## Every player weapon in res://weapons/ (those with a model; enemy shots have none)
+## and full ammo of every type.
+func give_all_weapons() -> void:
+	for f in DirAccess.get_files_at("res://weapons"):
+		f = f.trim_suffix(".remap")  # exported builds list remapped resources
+		var w := load("res://weapons/" + f) as WeaponData if f.ends_with(".tres") else null
+		if w and w.model and not weapons.has(w):
+			weapons.append(w)
+	weapons.sort_custom(func(a, b): return a.slot < b.slot)
+	for t in MAX_AMMO:
+		ammo[t] = MAX_AMMO[t]
+		ammo_changed.emit(t, ammo[t])
+	_play(pickup_weapon_sound, -4.0)
+	if current == null and not weapons.is_empty():
+		equip(weapons[0])
 
 
 func give_ammo(type: String, amount: int) -> bool:
@@ -345,7 +364,7 @@ func _process(delta: float) -> void:
 	if current and not _switching and not player.dead and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var pressed := Input.is_action_pressed("fire") if current.automatic else Input.is_action_just_pressed("fire")
 		if pressed and _cooldown <= 0.0:
-			if ammo[current.ammo_type] > 0:
+			if ammo[current.ammo_type] > 0 or infinite_ammo:
 				_fire()
 			elif Input.is_action_just_pressed("fire"):
 				_play(dry_fire_sound, -6.0)
@@ -361,8 +380,9 @@ func _process(delta: float) -> void:
 func _fire() -> void:
 	var w := current
 	_cooldown = w.fire_interval
-	ammo[w.ammo_type] -= 1
-	ammo_changed.emit(w.ammo_type, ammo[w.ammo_type])
+	if not infinite_ammo:
+		ammo[w.ammo_type] -= 1
+		ammo_changed.emit(w.ammo_type, ammo[w.ammo_type])
 
 	var space := player.get_world_3d().direct_space_state
 	var eye := camera.global_position

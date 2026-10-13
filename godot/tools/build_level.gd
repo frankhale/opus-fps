@@ -5,7 +5,8 @@ extends SceneTree
 ## A dirt road runs north past a village, a campsite and a pond to some ruins, and a
 ## crossroads south of the start leads west to a military outpost and east to a
 ## homestead. An overgrown graveyard and a second pond fill the north. Floating eyes
-## guard each area, and weapons, ammo and health are spread around. A pair of linked
+## guard each area; weapons, ammo and health are spread around, and gems are tucked
+## around every landmark. A pair of linked
 ## portals joins the west end of the crossroads road to the far north end of the main
 ## road. A creek crosses the south of the valley from cliff to cliff, under a bridge on
 ## the main road. Props are dropped onto the terrain surface.
@@ -20,6 +21,9 @@ const EYE := preload("res://scripts/enemies/floating_eye.gd")
 const PORTAL := preload("res://scripts/portal.gd")
 const CAMPFIRE := preload("res://scripts/campfire.gd")
 const TERRAIN := preload("res://scripts/terrain.gd")
+const GAS_CAN := preload("res://scripts/gas_can.gd")
+const PHYSICS_PROP := preload("res://scripts/physics_prop.gd")
+const EXPLOSIVE_BARREL := preload("res://scripts/explosive_barrel.gd")
 const TILE := 8.0
 const HALF := 11  # tiles from the center to the edge: 23 x 23 tiles
 ## Half-width of the walkable valley (cliff faces sit just beyond this).
@@ -118,6 +122,12 @@ func place(group: String, name: String, x: float, z: float, rot := 0.0, y = null
 			s *= size_rng.randf_range(0.85, 1.2)
 	inst.scale = Vector3.ONE * s
 	inst.name = name
+	if name == "gas_can":
+		inst.set_script(GAS_CAN)  # shootable: blows up
+	elif name == "barrel":
+		inst.set_script(PHYSICS_PROP)  # knocked about by shots, thrown by blasts
+	elif name == "barrel_explosive":
+		inst.set_script(EXPLOSIVE_BARREL)  # knocked about, and blows up like a gas can
 	groups[group].add_child(inst, true)
 	inst.owner = level
 	return inst
@@ -317,6 +327,8 @@ func build_ruins() -> void:
 	place("Ruins", "skull_pile", -3.0, -27.5)
 	place("Ruins", "tree_dead", 6.5, -21.5, 70.0)
 	place("Ruins", "rock_cluster", -9.0, -31.0, 30.0)
+	place("Ruins", "barbed_wire", 8.5, -30.0, 130.0)
+	place("Ruins", "barbed_wire", -6.5, -35.5, 280.0)
 
 
 func build_pond() -> void:
@@ -360,6 +372,9 @@ func build_crossroads() -> void:
 		lamp("Crossroads", x, ROAD_Z - 2.6)
 	place("Crossroads", "rock_large", -6.0, ROAD_Z + 7.0, 30.0)
 	place("Crossroads", "log_fallen", 8.0, ROAD_Z + 5.0, 80.0)
+	# A wire roadblock on the west road, narrowing the way toward the outpost.
+	place("Crossroads", "barbed_wire", -16.0, ROAD_Z - 3.0, 200.0)
+	place("Crossroads", "barbed_wire", -16.4, ROAD_Z + 3.0, 45.0)
 
 
 ## A wooden bridge carries the main road over the creek.
@@ -377,7 +392,7 @@ func clear_creek() -> void:
 
 
 ## Abandoned military outpost: tents, a watchtower, supply stacks, shipping containers
-## and a fenced yard.
+## and a fenced yard ringed with barbed wire.
 func build_outpost() -> void:
 	var g := "Outpost"
 	place(g, "watchtower", -46.0, 52.0, 15.0)
@@ -403,6 +418,12 @@ func build_outpost() -> void:
 	place(g, "conex", -22.6, 51.0, 90.0)
 	place(g, "conex", -22.5, 51.3, 93.0, ground(-22.6, 51.0) + 2.59)
 	place(g, "conex", -47.0, 56.5, 0.0)
+	# Barbed wire: coils in pairs along the front of the fence (the gateway left open) and
+	# along the open west side.
+	for c in [[-47.6, 42.2, 10.0], [-46.2, 42.3, 140.0], [-43.2, 42.1, 75.0], [-41.8, 42.3, 220.0],
+			[-39.4, 42.2, 300.0], [-33.2, 42.2, 35.0], [-31.8, 42.1, 190.0], [-28.4, 42.3, 260.0],
+			[-26.9, 42.2, 110.0], [-50.6, 46.5, 250.0], [-50.7, 49.0, 20.0], [-50.6, 54.5, 160.0]]:
+		place(g, "barbed_wire", c[0], c[1], c[2])
 	# Gas cans: a few by the supply barrels and a pair at the foot of the container stack.
 	for c in [[-27.9, 44.7, 20.0], [-28.7, 44.5, -35.0], [-30.0, 45.0, 160.0], [-24.3, 49.0, 80.0],
 			[-24.4, 49.7, 100.0]]:
@@ -532,6 +553,30 @@ func build_pickups() -> void:
 			pk.model_scale = h[2]
 			pk.respawn_time = 25.0
 			pk.name = "health"
+	# Gems: collectibles tucked around every landmark (and a few out in the wilds), taken
+	# for good. A y of -1 means on the ground; otherwise on a bridge deck.
+	var gems := [
+		[-9.0, -16.0, -1], [-15.5, 3.0, -1],  # village
+		[12.5, 11.0, -1], [4.5, -0.5, -1],  # campsite
+		[20.0, 24.5, -1],  # under the watchtower
+		[16.0, -6.5, 0.08], [21.5, -9.5, -1],  # pond
+		[0.0, -31.0, -1], [-8.5, -25.0, -1],  # ruins
+		[-45.0, -52.5, -1], [-28.5, -34.0, -1], [-37.0, -42.5, -1],  # graveyard
+		[32.0, -40.0, 0.08], [38.5, -41.0, -1],  # north pond
+		[-41.5, 51.0, -1], [-33.0, 55.5, -1],  # outpost
+		[37.5, 49.5, -1], [46.0, 59.5, -1],  # homestead
+		[6.0, 35.5, -1],  # crossroads
+		[-20.0, 64.0, -1], [22.0, 64.5, -1],  # in the creek
+	]
+	for gm in gems:
+		var y: float = ground(gm[0], gm[1]) if gm[2] < 0 else gm[2]
+		var pk := pickup(gm[0], gm[1], y)
+		pk.kind = PICKUP.Kind.GEM
+		pk.amount = 1
+		pk.model = scene("pickup_gem")
+		pk.model_scale = 1.6
+		pk.one_shot = true
+		pk.name = "gem"
 
 
 func pickup(x: float, z: float, y: float) -> Area3D:

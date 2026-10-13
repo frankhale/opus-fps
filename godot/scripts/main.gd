@@ -1,11 +1,13 @@
 extends Control
 ## Hosts the game world in a low-resolution SubViewport that is upscaled with
 ## nearest-neighbour filtering and run through the PS1 dither/color-depth shader.
-## Also owns mouse capture (click to capture, Esc to release), F1 toggles the PS1 filter
+## Also owns mouse capture (click to capture, Esc to release), F1 toggles the PS1 filter,
+## F2 shows or hides the controls help (hidden at start),
 ## F11, Cmd+Ctrl+F or Alt+Enter toggles fullscreen (the game starts fullscreen) and Cmd+Q
 ## quits. macOS takes F11 for Show Desktop by default, so Cmd+Ctrl+F (its own full-screen
 ## shortcut) is the one that works there out of the box. Cmd+1 switches between the game
-## and the model gallery. F12 saves a screenshot to ~/Pictures/<project name>/.
+## and the model gallery. F12 saves a screenshot to ~/Pictures/<project name>/. Cmd+M
+## hides or shows the minimap.
 
 ## Approximate vertical resolution to render at. The PS1 mostly ran at 240 lines;
 ## 480 (its high-res mode) keeps the chunky look but with finer pixels.
@@ -19,6 +21,7 @@ const GALLERY_SCENE := "res://scenes/gallery.tscn"
 @onready var container: SubViewportContainer = $SubViewportContainer
 @onready var hint: Label = $HUD/Hint
 @onready var hud: CanvasLayer = $HUD
+@onready var minimap: Control = $HUD/Minimap
 
 var _post: Material
 var _ps1_enabled := true
@@ -69,6 +72,10 @@ func _input(event: InputEvent) -> void:
 					get_tree().quit()
 			KEY_F12:
 				_screenshot()
+			KEY_M:
+				if event.meta_pressed:
+					minimap.visible = not minimap.visible
+					get_viewport().set_input_as_handled()  # not also M's map toggle
 			KEY_1:
 				if event.meta_pressed:
 					get_viewport().set_input_as_handled()

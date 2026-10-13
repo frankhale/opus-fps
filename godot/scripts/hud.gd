@@ -1,6 +1,7 @@
 extends CanvasLayer
-## Player HUD: a health bar (bottom-left, see HealthBar), the current weapon and its
-## ammo as rows of rounds (bottom-right, see AmmoDisplay), pickup messages that fade
+## Player HUD: a health bar (bottom-left, see HealthBar) with the gem count above it
+## (see GemCounter), the current weapon and its ammo as rows of rounds (bottom-right,
+## see AmmoDisplay), pickup messages that fade
 ## out, a red flash when hurt and a death screen.
 
 @export var weapons_path: NodePath
@@ -8,6 +9,7 @@ extends CanvasLayer
 @onready var weapon_label: Label = $WeaponName
 @onready var ammo_display: AmmoDisplay = $AmmoDisplay
 @onready var health_bar: HealthBar = $HealthBar
+@onready var gem_counter: GemCounter = $GemCounter
 @onready var message_label: Label = $Message
 @onready var damage_flash: ColorRect = $DamageFlash
 @onready var death_screen: Control = $DeathScreen
@@ -27,6 +29,7 @@ func _ready() -> void:
 	_player.message.connect(show_message)
 	_player.health_changed.connect(_on_health)
 	_player.damaged.connect(_on_damaged)
+	_player.gems_changed.connect(gem_counter.set_count)
 	_player.died.connect(func(): death_screen.visible = true)
 	_player.respawned.connect(func(): death_screen.visible = false)
 	death_screen.visible = false

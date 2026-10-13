@@ -1694,6 +1694,71 @@ def terrain_creek(b):
               color={"lstone": 2, "stone": 2, "sand": 1, "dstone": 1})
 
 
+# Defined after the terrain so adding it didn't reseed (and change) any earlier model.
+@asset("scenery")
+def barbed_wire(b):
+    """Loose roll of rusty barbed wire lying flat (about 1.4 m across, 0.4 m tall): one
+    long wire wound round and round in uneven, wobbling loops that bunch into a thick,
+    lumpy ring around an open middle. The last loops have sprung free and lie spread on
+    the ground toward -X, ending in a short loose tail; barbs stud the whole length."""
+    WR = 0.011  # wire radius, far thicker than real wire so it still reads at PS1 resolution
+    wire = {"steel": 3, "dirt": 2, "chrome": 1, "wood": 1}  # galvanized grey patched with rust
+
+    # Each turn gets its own spot in the ring's cross-section (distance out from the middle
+    # and height, slumped toward the ground), an off-center shift, a tilt and some lumps;
+    # the wire eases from one turn's shape to the next as it winds.
+    def key(r, z, off, tilt, lump):
+        a, t, ph = (b.rng.uniform(0, 2 * math.pi) for _ in range(3))
+        return (r, z, Vector((math.cos(a), math.sin(a))) * off, Vector((math.cos(t), math.sin(t))) * tilt,
+                lump, ph)
+
+    keys = [key(b.rng.uniform(0.32, 0.56), 0.03 + 0.3 * b.rng.random() ** 1.3, b.rng.uniform(0, 0.07),
+                b.rng.uniform(0.02, 0.1), b.rng.uniform(0.02, 0.06)) for _ in range(22)]
+    # Sprung loops: wider, shifted toward -X and lying on the ground.
+    for r, cx in ((0.6, -0.2), (0.68, -0.3)):
+        k = key(r, 0.02, 0, 0.015, 0.02)
+        keys.append((k[0], k[1], Vector((cx, b.rng.uniform(-0.05, 0.05))), *k[3:]))
+
+    per = 13  # points per turn
+    pts = []
+    for i in range((len(keys) - 1) * per + 1):
+        s = i / per
+        k0, k1 = keys[min(int(s), len(keys) - 1)], keys[min(int(s) + 1, len(keys) - 1)]
+        f = smoothstep(0, 1, s - int(s))
+        r, z, c, t, lump = (k0[j] + (k1[j] - k0[j]) * f for j in range(5))
+        ph = k0[5] if f < 0.5 else k1[5]
+        th = 2 * math.pi * s
+        h = z + t.x * math.cos(th) + t.y * math.sin(th) + lump * math.sin(3 * th + ph)
+        pts.append(Vector((c.x + r * math.cos(th), c.y + r * math.sin(th), max(h, WR))))
+    # The loose end: a short tail kinking off across the ground.
+    d = (pts[-1] - pts[-2]).normalized()
+    for _ in range(5):
+        d = (d + Vector((b.rng.uniform(-0.4, 0.4), b.rng.uniform(-0.4, 0.4), 0))).normalized()
+        pts.append(pts[-1] + d * 0.09)
+        pts[-1].z = WR
+    b.tube(pts, [WR] * (len(pts) - 1) + [0.0], seg=3, color=wire)
+
+    # Barbs: a little X of two spikes across the wire every 30 cm or so. Each spike is a
+    # thin double-ended pyramid on a triangle.
+    def spike(p, u, d, half=0.03, w=0.006):
+        v = d.cross(u)
+        mid = [p + (v * math.cos(a) + d * math.sin(a)) * w for a in (0, 2.1, 4.2)]
+        b.poly([p + u * half, p - u * half, *mid],
+               [(0, 2, 3), (0, 3, 4), (0, 4, 2), (1, 3, 2), (1, 4, 3), (1, 2, 4)], color=wire)
+
+    run = 0.0
+    for p0, p1 in zip(pts, pts[1:]):
+        seg = p1 - p0
+        run += seg.length
+        if run < 0.3:
+            continue
+        run = b.rng.uniform(-0.04, 0.04)
+        d = seg.normalized()
+        u = Matrix.Rotation(b.rng.uniform(0, math.pi), 3, d) @ d.orthogonal().normalized()
+        spike(p1, u, d)
+        spike(p1, d.cross(u), d)
+
+
 # ---------------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------------

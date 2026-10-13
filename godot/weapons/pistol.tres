@@ -33,3 +33,4 @@ glow_energy = 2.5
 smoke_trail = false
 explosion_color = Color(1.0, 0.65, 0.25, 1)
 damage = 18.0
+gas_can_shots = 3

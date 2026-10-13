@@ -1,23 +1,26 @@
 @tool
 class_name Pickup
 extends Area3D
-## A floating, spinning weapon, ammo or health pickup. Walking into it hands it to the
-## player; once taken it disappears and respawns after `respawn_time` seconds with a
+## A floating, spinning weapon, ammo, health or gem pickup. Walking into it hands it to
+## the player; once taken it disappears and respawns after `respawn_time` seconds with a
 ## sparkle and a chime. Anything the player can't use (full ammo or health) stays put.
-## Loot dropped by enemies is `one_shot` (never respawns) and expires after `lifetime`.
+## Loot dropped by enemies is `one_shot` (never respawns) and expires after `lifetime`;
+## gems are collectibles, so they are always taken for good, with a sparkle.
 ## (@tool so the model also shows in the editor.)
 
-enum Kind { WEAPON, AMMO, HEALTH }
+enum Kind { WEAPON, AMMO, HEALTH, GEM }
 
 const RESPAWN_SOUND := preload("res://assets/sfx/respawn.wav")
 const HEAL_SOUND := preload("res://assets/sfx/heal.wav")
+## Glow and sparkle color of gems (the gem model's green).
+const GEM_COLOR := Color(0.45, 0.85, 0.25)
 ## Physics layer the player's body is on (bit value 2).
 const PLAYER_LAYER := 2
 
 @export var kind := Kind.AMMO
 @export var weapon: WeaponData
 @export_enum("bullets", "shells", "rockets", "cells") var ammo_type := "bullets"
-## Ammo rounds, or health points for HEALTH pickups.
+## Ammo rounds, health points for HEALTH pickups, or gems for GEM pickups.
 @export var amount := 20
 ## Ammo/health model; weapons use their own model.
 @export var model: PackedScene
@@ -54,13 +57,15 @@ func _ready() -> void:
 		_model.scale = _base_scale
 		_model.position.y = hover_height
 		add_child(_model)
-	if kind == Kind.WEAPON and weapon:
+	if kind == Kind.WEAPON and weapon or kind == Kind.GEM:
 		var glow := OmniLight3D.new()
-		glow.light_color = weapon.projectile_color
+		glow.light_color = weapon.projectile_color if kind == Kind.WEAPON else GEM_COLOR
 		glow.omni_range = 2.5
 		glow.light_energy = 0.8
 		glow.position.y = 0.5
 		add_child(glow)
+	if kind == Kind.GEM:
+		one_shot = true
 
 	if Engine.is_editor_hint():
 		return
@@ -109,6 +114,17 @@ func _try_give(body: Node3D) -> void:
 			taken = body.heal(amount)
 			if taken:
 				_chime(HEAL_SOUND, get_parent())
+		Kind.GEM:
+			if not body.has_method("add_gems"):
+				return
+			taken = body.add_gems(amount)
+			if taken:
+				_chime(RESPAWN_SOUND, get_parent())
+				var sparkle := FX.burst(GEM_COLOR, 24, 2.5, 0.08, 0.6, 1.0, 3.0)
+				get_parent().add_child(sparkle)
+				sparkle.global_position = global_position + Vector3(0, hover_height, 0)
+				sparkle.emitting = true
+				get_tree().create_timer(1.0).timeout.connect(sparkle.queue_free)
 	if taken:
 		_collect()
 

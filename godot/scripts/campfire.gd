@@ -15,6 +15,8 @@ extends Node3D
 
 var _light: OmniLight3D
 var _t := 0.0
+## 1 while burning fully, falling to 0 as the fire dies down (see burn_out()).
+var _strength := 1.0
 
 
 func _ready() -> void:
@@ -122,4 +124,26 @@ func _process(delta: float) -> void:
 	# Firelight flicker: a slow breath plus quick, uneven jitter.
 	_t += delta
 	var flicker := 0.12 * sin(_t * 2.1) + 0.08 * sin(_t * 7.3 + 1.1) + 0.06 * sin(_t * 13.7 + 2.3) + 0.04 * sin(_t * 23.0)
-	_light.light_energy = light_energy * (1.0 + flicker)
+	_light.light_energy = light_energy * _strength * (1.0 + flicker)
+
+
+## Lets the fire die down: after `delay` seconds the flames, embers and smoke thin out
+## and the light dims over `fade` seconds, then the node frees itself once the last
+## smoke has drifted off. (The gas can's spilled fuel uses this.)
+func burn_out(delay: float, fade: float) -> void:
+	var t := create_tween()
+	t.tween_interval(delay)
+	t.tween_method(_set_strength, 1.0, 0.0, fade)
+	var linger := 0.0
+	for p in get_children():
+		if p is GPUParticles3D:
+			linger = maxf(linger, p.lifetime)
+	t.tween_interval(linger)
+	t.tween_callback(queue_free)
+
+
+func _set_strength(k: float) -> void:
+	_strength = k
+	for p in get_children():
+		if p is GPUParticles3D:
+			p.amount_ratio = k
