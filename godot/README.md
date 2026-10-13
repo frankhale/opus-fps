@@ -51,7 +51,7 @@ Every model imports with its `PS1_Palette` and `PS1_Glow` materials replaced by 
 
 ## Updating assets
 
-After regenerating the asset pack (see `../assets/README.md`), run:
+After regenerating the asset pack (see the root `README.md`), run:
 
 ```
 python3 tools/sync_godot_assets.py                                              # copy models, write import settings
