@@ -16,6 +16,9 @@ the world, written straight into the Godot project at godot/assets/sfx/.
   teleport.wav       rising shimmer whoosh when passing through a portal
   golem_hum.wav      the golem's electric buzz, seamless loop
   golem_alert/charge/fire/shock/hurt/die.wav   the golem: grinding stone and electricity
+  shield_up.wav      invulnerability pickup: a bright rising chord with a shimmer
+  shield_hum.wav     the shield's glassy shimmer while it lasts, seamless loop
+  shield_down.wav    the shield fading: a falling, thinning chord
 
 Loop files get a .import that tells Godot to loop them. Run from the repo root:
   python3 tools/generate_sfx.py
@@ -281,6 +284,38 @@ def portal_sounds(rng):
     write("teleport.wav", mix([r * e * 0.6 for r, e in zip(rise, swell)], whoosh, [x * 0.35 for x in sparkle])[:n], 0.75)
 
 
+def shield_sounds(rng):
+    """The invulnerability shield: a glassy, ringing chord."""
+    n = int(1.1 * RATE)
+    chord = mix(*[[0.0] * int(k * 0.05 * RATE) + tone(n, f, 0.5, 0.01, (1.0, 0.25, 0.1))
+                  for k, f in enumerate((523, 784, 1046, 1568))])
+    rise, ph = [], 0.0
+    for i in range(n):
+        ph += 2 * math.pi * (300 + 900 * (i / n)) / RATE
+        rise.append(math.sin(ph) * math.exp(-i / (0.3 * RATE)) * min(i / (0.05 * RATE), 1.0))
+    sparkle = mix(*[[0.0] * int((0.15 + k * 0.05) * RATE) + tone(n, f, 0.08, 0.002, (1.0, 0.0, 0.2))
+                    for k, f in enumerate((2093, 2637, 3136, 4186))])
+    write("shield_up.wav", mix(chord, [r * 0.5 for r in rise], [x * 0.3 for x in sparkle])[:n], 0.6)
+
+    # Hum: high detuned pairs that beat slowly, plus faint airy shimmer. Whole cycles over
+    # `length` keep the loop seamless.
+    length = 2.0
+    n = int((length + 0.3) * RATE)
+    hum = [0.3 * math.sin(2 * math.pi * 523 * i / RATE) + 0.3 * math.sin(2 * math.pi * 525 * i / RATE)
+           + 0.2 * math.sin(2 * math.pi * 784 * i / RATE) + 0.2 * math.sin(2 * math.pi * 787.5 * i / RATE)
+           + 0.1 * math.sin(2 * math.pi * 130.5 * i / RATE)
+           for i in range(n)]
+    air = highpass(noise(n, rng), 0.6)
+    write("shield_hum.wav", loopable([h + a * 0.08 for h, a in zip(hum, air)], 0.3), 0.35)
+
+    n = int(0.8 * RATE)
+    fall, ph = [], 0.0
+    for i in range(n):
+        ph += 2 * math.pi * (1046 - 700 * (i / n)) / RATE
+        fall.append((math.sin(ph) + 0.3 * math.sin(1.5 * ph)) * math.exp(-i / (0.25 * RATE)))
+    write("shield_down.wav", mix(fall, [s * 0.4 for s in lowpass(noise(n, rng), 0.2)][:n]), 0.5)
+
+
 def golem_sounds(rng):
     """The golem: grinding, clacking stone and the electricity it floats on."""
     def buzz(n, f0, f1, harm=(1.0, 0.0, 0.5, 0.0, 0.3, 0.0, 0.2)):
@@ -400,8 +435,9 @@ def generate():
     creature_sounds(random.Random(13))
     portal_sounds(random.Random(17))
     golem_sounds(random.Random(19))
+    shield_sounds(random.Random(23))
 
-    for name in ("slide_loop.wav", "wind_loop.wav", "portal_hum.wav", "golem_hum.wav"):
+    for name in ("slide_loop.wav", "wind_loop.wav", "portal_hum.wav", "golem_hum.wav", "shield_hum.wav"):
         path = os.path.join(OUT, name + ".import")
         uid = None
         if os.path.exists(path):

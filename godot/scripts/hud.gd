@@ -2,7 +2,8 @@ extends CanvasLayer
 ## Player HUD: a health bar (bottom-left, see HealthBar) with the gem count above it
 ## (see GemCounter), the current weapon and its ammo as rows of rounds (bottom-right,
 ## see AmmoDisplay), pickup messages that fade
-## out, a red flash when hurt and a death screen.
+## out, a red flash when hurt, a death screen and, while a powerup lasts, its name and the
+## seconds left (top middle, blinking over the last 3).
 
 @export var weapons_path: NodePath
 
@@ -18,6 +19,7 @@ var _weapons: WeaponManager
 var _player: Node
 var _message_tween: Tween
 var _flash_tween: Tween
+var _powerup_label: Label
 
 
 func _ready() -> void:
@@ -33,10 +35,32 @@ func _ready() -> void:
 	_player.died.connect(func(): death_screen.visible = true)
 	_player.respawned.connect(func(): death_screen.visible = false)
 	death_screen.visible = false
+	_powerup_label = Label.new()
+	var settings := LabelSettings.new()
+	settings.font_size = 22
+	settings.font_color = Pickup.POWERUP_COLOR
+	settings.outline_size = 6
+	settings.outline_color = Color(0, 0, 0, 0.85)
+	_powerup_label.label_settings = settings
+	_powerup_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_powerup_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	_powerup_label.offset_left = -200.0
+	_powerup_label.offset_right = 200.0
+	_powerup_label.offset_top = 24.0
+	_powerup_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_powerup_label.visible = false
+	add_child(_powerup_label)
 	damage_flash.modulate.a = 0.0
 	_refresh()
 	_on_health(_player.health, _player.max_health)
 	show_message("Find a weapon")
+
+
+func _process(_delta: float) -> void:
+	var left: float = _player.invulnerable_time
+	_powerup_label.visible = left > 0.0 and (left > 3.0 or fmod(left, 0.5) > 0.2)
+	if _powerup_label.visible:
+		_powerup_label.text = "INVULNERABLE  %d" % ceili(left)
 
 
 func _refresh() -> void:

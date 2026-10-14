@@ -6,6 +6,7 @@ extends CharacterBody3D
 ##  * automatic step-up over low ledges
 ##  * health: damage, healing, death and respawning at the start point
 ##  * a count of the gems collected (god_mode: no damage, all weapons, unlimited ammo)
+##  * powerups: invulnerability turns all damage away for a while (see ShieldVeil)
 ## Camera feel lives in camera_effects.gd and sounds in player_audio.gd; both react
 ## to this script's signals and public state.
 
@@ -20,6 +21,11 @@ signal respawned
 signal message(text: String)
 signal teleported
 signal gems_changed(count: int)
+## A powerup was picked up (or topped up) and now lasts `duration` seconds.
+signal powerup_started(powerup: String, duration: float)
+signal powerup_ended(powerup: String)
+## Damage the invulnerability shield turned away.
+signal shield_hit(amount: float, from: Vector3)
 
 @export_group("Speed")
 @export var walk_speed := 5.0
@@ -76,6 +82,8 @@ var health := 100.0
 var dead := false
 ## Gems collected (see Pickup); kept through death.
 var gems := 0
+## Seconds of invulnerability left (0 = none).
+var invulnerable_time := 0.0
 ## Set from the dev console: damage is ignored, and turning it on hands over every
 ## weapon with unlimited ammo (see WeaponManager).
 var god_mode := false:
@@ -94,6 +102,7 @@ var _was_on_floor := true
 var _slide_dir := Vector3.ZERO
 var _slide_timer := 0.0
 var _spawn: Transform3D
+var _invulnerable := false
 
 
 func _ready() -> void:
@@ -106,6 +115,9 @@ func _ready() -> void:
 
 func take_damage(amount: float, at := Vector3.ZERO, _dir := Vector3.ZERO) -> void:
 	if dead or god_mode:
+		return
+	if invulnerable_time > 0.0:
+		shield_hit.emit(amount, at)
 		return
 	health = maxf(health - amount, 0.0)
 	health_changed.emit(health, max_health)
@@ -127,6 +139,21 @@ func heal(amount: float) -> bool:
 	return true
 
 
+## Starts a powerup, or tops it back up to `duration`. Always taken while alive.
+func give_powerup(powerup: String, duration: float) -> bool:
+	if dead:
+		return false
+	match powerup:
+		"invulnerability":
+			invulnerable_time = maxf(invulnerable_time, duration)
+			_invulnerable = true
+			message.emit("Invulnerability!")
+		_:
+			return false
+	powerup_started.emit(powerup, duration)
+	return true
+
+
 ## Always taken: gems have no limit.
 func add_gems(amount: int) -> bool:
 	gems += amount
@@ -144,6 +171,7 @@ func _die() -> void:
 
 
 func _respawn() -> void:
+	_end_invulnerability()
 	global_transform = _spawn
 	velocity = Vector3.ZERO
 	head.rotation.x = 0.0
@@ -171,6 +199,20 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func horizontal_speed() -> float:
 	return Vector2(velocity.x, velocity.z).length()
+
+
+func _process(delta: float) -> void:
+	if invulnerable_time > 0.0:
+		invulnerable_time -= delta
+		if invulnerable_time <= 0.0:
+			_end_invulnerability()
+
+
+func _end_invulnerability() -> void:
+	if _invulnerable:
+		invulnerable_time = 0.0
+		_invulnerable = false
+		powerup_ended.emit("invulnerability")
 
 
 func _physics_process(delta: float) -> void:

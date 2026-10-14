@@ -62,7 +62,18 @@ var tile_faces: Array = []  # [{min: Vector2, max: Vector2, faces: PackedVector3
 
 
 func _ready() -> void:
+	add_to_group("terrain")
 	build()
+
+
+## Name of the tile at (x, z), e.g. "terrain_grass" or "terrain_pond" ("" off the grid).
+func tile_at(x: float, z: float) -> String:
+	var n := 2 * half + 1
+	var i := roundi(x / TILE) + half
+	var j := roundi(z / TILE) + half
+	if i < 0 or j < 0 or i >= n or j >= n or tiles.size() != n * n:
+		return ""
+	return tiles[j * n + i].get_slice(":", 0)
 
 
 ## Edge of the tiled ground, in meters from the center.

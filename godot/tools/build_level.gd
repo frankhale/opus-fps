@@ -5,9 +5,9 @@ extends SceneTree
 ## A dirt road runs north past a village, a campsite and a pond to some ruins, and a
 ## crossroads south of the start leads west to a military outpost and east to a
 ## homestead. An overgrown graveyard and a second pond fill the north. Floating eyes
-## guard each area and golems the north; weapons, ammo and health are spread around, and gems are tucked
-## around every landmark. A pair of linked
-## portals joins the west end of the crossroads road to the far north end of the main
+## guard each area and golems the north; weapons (at random spots), ammo, health and an
+## invulnerability powerup are spread around, and gems are tucked around every landmark.
+## A pair of linked portals joins the west end of the crossroads road to the far north end of the main
 ## road. A creek crosses the south of the valley from cliff to cliff, under a bridge on
 ## the main road. Props are dropped onto the terrain surface.
 ##
@@ -506,7 +506,9 @@ func build_nature() -> void:
 
 
 func build_pickups() -> void:
-	# Weapons: one per landmark, roughly in the order you reach them from the spawn.
+	# Weapons: the pistol waits just ahead of the spawn; the rest turn up at random spots
+	# around the valley, new ones each game and each time they respawn (Pickup.random_spot).
+	# The positions here only matter in the editor.
 	var weapons := [
 		["pistol", 0.0, 24.0], ["shotgun", -4.2, -1.5], ["rifle", 9.5, 0.5],
 		["plasma_rifle", 16.0, -8.0], ["rocket_launcher", 0.0, -28.5],
@@ -517,7 +519,18 @@ func build_pickups() -> void:
 		pk.kind = PICKUP.Kind.WEAPON
 		pk.weapon = load("res://weapons/%s.tres" % it[0])
 		pk.respawn_time = 30.0
+		pk.random_spot = it[0] != "pistol"
 		pk.name = "weapon_" + it[0]
+	# Invulnerability: 15 s of no damage, at a random spot, back 60 s after it's taken.
+	var shield := pickup(-6.0, 20.0, ground(-6.0, 20.0))
+	shield.kind = PICKUP.Kind.POWERUP
+	shield.powerup = "invulnerability"
+	shield.duration = 15.0
+	shield.model = scene("powerup_invulnerability")
+	shield.model_scale = 1.6
+	shield.respawn_time = 60.0
+	shield.random_spot = true
+	shield.name = "powerup_invulnerability"
 	# Ammo: [type, amount, model, positions]
 	var ammo := [
 		["bullets", 30, "pickup_ammo_bullets", [Vector2(2.5, 19), Vector2(-3, 9), Vector2(6, -13), Vector2(-12, 12), Vector2(22, 9)]],
