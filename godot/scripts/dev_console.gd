@@ -30,6 +30,7 @@ func _ready() -> void:
 	register("help", _cmd_help, "List commands")
 	register("clear", func(_args): _log.clear(), "Clear the console")
 	register("god", _cmd_god, "Toggle god mode: no damage, every weapon, unlimited ammo. god 1 / god 0 to set it")
+	register("sfx", _cmd_sfx, "Toggle sound effects (all game audio, ambience included). sfx 1 / sfx 0 to set it")
 	_print("[color=#8f8]Opus FPS console[/color] - type [b]help[/b] for commands")
 
 
@@ -197,3 +198,16 @@ func _cmd_god(args: PackedStringArray) -> void:
 	var state := "ON" if player.god_mode else "OFF"
 	_print("God mode [b]%s[/b]" % state)
 	player.message.emit("God mode " + state)
+
+
+## Mutes the Master bus, which every sound plays through. AudioServer is global, so the
+## setting holds across switching to the gallery and back.
+func _cmd_sfx(args: PackedStringArray) -> void:
+	var bus := AudioServer.get_bus_index("Master")
+	var on := AudioServer.is_bus_mute(bus) if args.is_empty() else args[0] in ["1", "on", "true"]
+	AudioServer.set_bus_mute(bus, not on)
+	var state := "ON" if on else "OFF"
+	_print("Sound effects [b]%s[/b]" % state)
+	var player := _player()
+	if player:
+		player.message.emit("Sound effects " + state)

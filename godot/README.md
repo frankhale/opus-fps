@@ -18,7 +18,7 @@ A walkable PS1-style test level built from the asset pack. Open this folder in G
 
 **Gas cans** blow up when shot: three pistol rounds or one hit from any other weapon (each weapon's `gas_can_shots`). The blast hurts you and enemies within 4 m, sets off other cans and explosive barrels nearby, and leaves the fuel burning for 10 seconds, dying down over the last 4. Rocket splash sets them off too.
 
-**Dev console:** ~ (the key left of 1) slides a see-through console up over the bottom quarter of the screen and pauses the game; ~ or Esc closes it. Type a command and press Enter; Up/Down recall earlier ones. `help` lists commands, `clear` empties the log, and `god` toggles god mode: no damage, plus every weapon and unlimited ammo when it turns on (`god 1` / `god 0` set it).
+**Dev console:** ~ (the key left of 1) slides a see-through console up over the bottom quarter of the screen and pauses the game; ~ or Esc closes it. Type a command and press Enter; Up/Down recall earlier ones. `help` lists commands, `clear` empties the log, `god` toggles god mode: no damage, plus every weapon and unlimited ammo when it turns on (`god 1` / `god 0` set it), and `sfx` turns the sound effects off and on (`sfx 0` / `sfx 1` set it). That's all the game's audio, the wind ambience included, and it stays that way when you switch to the gallery and back.
 
 ## Layout
 
