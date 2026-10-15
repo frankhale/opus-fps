@@ -761,23 +761,86 @@ def cabin(b):
 
 @asset("scenery")
 def watchtower(b):
+    """Lookout tower with a 3.6 m square deck (top at z=4.7) under a pyramid roof. A ladder
+    on the -Y side climbs to a gap in the railing; a second gap on the +Y side is where a
+    bridge_plank docks, so two towers facing each other 9.7 m apart (center to center)
+    can be joined."""
+    top, half = 4.7, 1.8
+
+    def leg(z):  # distance of the splayed legs from the center at height z
+        return 1.55 - 0.2 * z / (top - 0.2)
     for sx in (-1, 1):
         for sy in (-1, 1):
-            b.beam((sx * 1.15, sy * 1.15, 0), (sx * 1.0, sy * 1.0, 4.0), 0.2, color="dbark")
+            b.beam((sx * leg(0), sy * leg(0), 0), (sx * leg(top), sy * leg(top), top - 0.2), 0.24, color="dbark")
     for side in range(4):
+        gap = side in (0, 2)  # ladder (-Y) and bridge (+Y)
         with b.at(rot=(0, 0, 90 * side)):
-            b.box((0.08, 0.08, 2.9), (0, -1.07, 1.6), rot=(0, 43, 0), color="wood")
-            b.box((0.08, 0.08, 2.9), (0, -1.07, 1.6), rot=(0, -43, 0), color="wood")
-            b.box((2.2, 0.08, 0.1), (0, -1.03, 3.0), color="wood")
-            b.box((2.8, 0.08, 0.1), (0, -1.4, 4.9), color="lwood")
-            b.box((2.8, 0.08, 0.1), (0, -1.4, 4.5), color="lwood")
-            b.box((0.12, 0.12, 2.1), (1.32, -1.32, 5.05), color="wood")
-    b.box((2.9, 2.9, 0.2), (0, 0, 4.0), color={"lwood": 2, "wood": 1}, cuts=2)
-    b.cyl(2.3, 0, 1.3, seg=4, loc=(0, 0, 6.75), rot=(0, 0, 45), color={"roof": 3, "dbark": 1})
-    for z in (0.4 * i for i in range(1, 10)):
-        b.box((0.55, 0.06, 0.06), (0, -1.35, z), color="wood")
-    for x in (-0.3, 0.3):
-        b.box((0.07, 0.07, 4.1), (x, -1.38, 2.05), color="dbark")
+            for z0, z1 in ((0.3, 2.35), (2.35, 4.4)):  # two tiers of cross braces
+                for s in (-1, 1):
+                    b.beam((-s * leg(z0), -leg(z0) - 0.13, z0), (s * leg(z1), -leg(z1) - 0.13, z1), 0.08,
+                           color="wood")
+            b.box((2 * leg(2.35), 0.1, 0.12), (0, -leg(2.35) - 0.13, 2.35), color="wood")
+            b.box((3.6, 0.12, 0.25), (0, -half + 0.06, top - 0.32), color="dbark")  # rim joist
+            b.box((0.12, 0.12, 2.2), (1.72, -1.72, top + 1.1), color="wood")  # corner post
+            for z in (top + 0.5, top + 0.95):
+                if gap:
+                    for s in (-1, 1):
+                        b.box((1.2, 0.08, 0.1), (s * 1.12, -1.75, z), color="lwood")
+                else:
+                    b.box((3.5, 0.08, 0.1), (0, -1.75, z), color="lwood")
+            if gap:
+                for s in (-1, 1):
+                    b.box((0.1, 0.1, 1.05), (s * 0.55, -1.75, top + 0.52), color="wood")
+    b.box((2 * half, 2 * half, 0.2), (0, 0, top - 0.1), color={"lwood": 2, "wood": 1}, cuts=3)
+    for x in (-0.9, 0, 0.9):
+        b.box((0.14, 2 * half - 0.2, 0.18), (x, 0, top - 0.29), color="dbark")  # floor beams
+    b.cyl(2.85, 0, 1.4, seg=4, loc=(0, 0, top + 2.2 + 0.7), rot=(0, 0, 45), color={"roof": 3, "dbark": 1})
+    b.box((3.6, 3.6, 0.08), (0, 0, top + 2.2 - 0.04), color="dbark")  # ceiling under the roof
+    # Ladder: 0.3 m out from the deck's edge, its rails running on up past the deck as
+    # handholds either side of the railing gap.
+    ly = -half - 0.3
+    for x in (-0.45, 0.45):
+        b.box((0.08, 0.08, top + 1.0), (x, ly, (top + 1.0) / 2), color="dbark")
+        b.box((0.08, 0.32, 0.08), (x, ly + 0.17, top - 0.15), color="dbark")  # brackets to the deck
+        b.box((0.08, 0.52, 0.08), (x, ly + 0.26, 2.35), color="dbark")
+    for i in range(1, 16):
+        b.box((0.82, 0.07, 0.07), (0, ly, 0.3 * i), color="wood")
+
+
+@asset("scenery")
+def bridge_plank(b):
+    """Plank footbridge between two watchtowers, 6.4 m long along Y and 1 m wide, with
+    rope handrails. Its deck is at z=0 at both ends and sags 0.15 m in the middle. The
+    last 0.15 m at each end rests on a tower's deck, through the railing gap."""
+    L, n = 6.4, 17
+
+    def sag(y):
+        return -0.15 * (1 - (2 * y / L) ** 2)
+    for i in range(n):
+        y = -L / 2 + (i + 0.5) * L / n
+        tilt = math.degrees(math.atan(0.15 * 8 * y / L ** 2))
+        b.box((1.0 + b.rng.uniform(-0.06, 0.06), L / n - 0.04, 0.06),
+              (b.rng.uniform(-0.03, 0.03), y, sag(y) - 0.03), rot=(tilt, 0, b.rng.uniform(-2, 2)),
+              color={"wood": 3, "lwood": 2, "dbark": 1})
+    ys = [-L / 2 + L * k / 8 for k in range(9)]
+    for x in (-0.32, 0.32):  # stringers under the planks
+        for y0, y1 in zip(ys, ys[1:]):
+            b.beam((x, y0, sag(y0) - 0.1), (x, y1, sag(y1) - 0.1), 0.1, color="dbark")
+    end = L / 2 - 0.27  # the posts stand just off the towers' decks
+    for sy in (-1, 1):
+        for x in (-0.5, 0.5):
+            b.box((0.1, 0.1, 1.35), (x, sy * end, 0.35), color="dbark")
+    # Rope handrails at two heights, hanging in a shallow curve, with hangers down to
+    # the deck edge.
+    for x in (-0.5, 0.5):
+        for h, droop in ((1.0, 0.25), (0.5, 0.15)):
+            pts = [(x, y, h + sag(y) / 0.15 * droop) for y in
+                   (-end + 2 * end * k / 10 for k in range(11))]
+            for p0, p1 in zip(pts, pts[1:]):
+                b.beam(p0, p1, 0.045, color="lsand")
+        for k in range(1, 8):
+            y = -end + 2 * end * k / 8
+            b.beam((x, y, sag(y)), (x, y, 1.0 + sag(y) / 0.15 * 0.25), 0.03, color="sand")
 
 
 @asset("scenery")

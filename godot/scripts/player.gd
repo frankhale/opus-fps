@@ -4,6 +4,7 @@ extends CharacterBody3D
 ##  * sprint, crouch and sprint-slide
 ##  * jump with coyote time, input buffering, variable height and snappier falls
 ##  * automatic step-up over low ledges
+##  * climbing ladders (Ladder areas)
 ##  * health: damage, healing, death and respawning at the start point
 ##  * a count of the gems collected (god_mode: no damage, all weapons, unlimited ammo)
 ##  * powerups: invulnerability turns all damage away for a while (see ShieldVeil)
@@ -62,6 +63,21 @@ signal shield_hit(amount: float, from: Vector3)
 @export var slide_min_speed := 3.5
 @export var slide_cooldown := 0.6
 
+@export_group("Ladders")
+## Climbing speed up and down a ladder, in m/s.
+@export var climb_speed := 3.0
+## How far a climber hangs out from the ladder; they can't back off further mid-climb.
+@export var climb_reach := 0.45
+## After jumping off a ladder, it can't be grabbed again for this long.
+@export var ladder_regrab := 0.4
+## Sideways shuffling speed on a ladder, in m/s.
+@export var climb_side_speed := 1.2
+## Shuffling further than this (m) from the middle of a ladder steps off its side.
+@export var climb_side_limit := 0.25
+## How far down you can look while climbing, in degrees (the hands are on the rungs
+## above; looking further down would show the arms ending in mid-air).
+@export var climb_look_down := 30.0
+
 @export_group("Health")
 @export var max_health := 100.0
 @export var respawn_delay := 3.0
@@ -103,6 +119,11 @@ var _slide_dir := Vector3.ZERO
 var _slide_timer := 0.0
 var _spawn: Transform3D
 var _invulnerable := false
+## Ladders the body is touching (most recent last).
+var _ladders: Array[Ladder] = []
+var _ladder_cooldown := 0.0
+## True while climbing a ladder.
+var is_climbing := false
 
 
 func _ready() -> void:
@@ -181,6 +202,20 @@ func _respawn() -> void:
 	respawned.emit()
 
 
+func enter_ladder(ladder: Ladder) -> void:
+	if ladder not in _ladders:
+		_ladders.append(ladder)
+
+
+func exit_ladder(ladder: Ladder) -> void:
+	_ladders.erase(ladder)
+
+
+## The ladder being touched (the latest one), or null.
+func current_ladder() -> Ladder:
+	return null if _ladders.is_empty() else _ladders.back()
+
+
 ## Moves the body instantly (portals). Head pitch is kept; yaw comes from `to`.
 func teleport(to: Transform3D, new_velocity: Vector3) -> void:
 	global_transform = to
@@ -194,7 +229,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		# stays the same whatever the PS1 render resolution is.
 		var d: Vector2 = event.screen_relative * mouse_sensitivity
 		rotate_y(-d.x)
-		head.rotation.x = clampf(head.rotation.x - d.y, deg_to_rad(-89.0), deg_to_rad(89.0))
+		var low := -climb_look_down if is_climbing else -89.0
+		head.rotation.x = clampf(head.rotation.x - d.y, minf(deg_to_rad(low), head.rotation.x), deg_to_rad(89.0))
 
 
 func horizontal_speed() -> float:
@@ -202,6 +238,10 @@ func horizontal_speed() -> float:
 
 
 func _process(delta: float) -> void:
+	if is_climbing:
+		# Grabbing a ladder while looking further down lifts the view to the limit.
+		head.rotation.x = move_toward(head.rotation.x, maxf(head.rotation.x, deg_to_rad(-climb_look_down)),
+			4.0 * delta)
 	if invulnerable_time > 0.0:
 		invulnerable_time -= delta
 		if invulnerable_time <= 0.0:
@@ -226,6 +266,12 @@ func _physics_process(delta: float) -> void:
 	is_sprinting = Input.is_action_pressed("sprint") and input.y < -0.5 and not is_crouching
 
 	_update_crouch(on_floor, delta)
+	_ladder_cooldown = maxf(_ladder_cooldown - delta, 0.0)
+	is_climbing = _climb(wish, on_floor, delta)
+	if is_climbing:
+		move_and_slide()
+		_was_on_floor = is_on_floor()
+		return
 	_apply_gravity(on_floor, delta)
 	_try_jump()
 
@@ -272,6 +318,60 @@ func _apply_gravity(on_floor: bool, delta: float) -> void:
 	velocity.y -= _gravity * g_scale * delta
 	if Input.is_action_just_released("jump") and velocity.y > 0.0:
 		velocity.y *= jump_cut
+
+
+## Ladders: push toward one to climb up it and pull away to climb down. Mid-climb you
+## can't back off it (pulling away only takes you down), so you don't fall off by
+## accident; strafing shuffles slowly sideways, and too far steps off the side and falls.
+## Looking down is limited while climbing (climb_look_down). At the top, pushing on carries you over onto the landing; from the
+## landing, walk off the edge onto the ladder to climb down. Jump to let go. Returns
+## false (move normally) at the foot of the ladder and on the landing.
+func _climb(wish: Vector3, on_floor: bool, delta: float) -> bool:
+	if _ladders.is_empty() or dead or _ladder_cooldown > 0.0:
+		return false
+	var ladder := _ladders.back() as Ladder
+	var at := ladder.to_local(global_position)  # feet, in the ladder's units
+	if at.z < -ladder.landing_gap:
+		return false  # on the landing
+	var m := ladder.unit()
+	var out := ladder.outward()
+	var toward := -wish.dot(out)
+	var dir := signf(toward) if absf(toward) > 0.2 else 0.0
+	if on_floor and at.y * m < 0.3 and dir <= 0.0:
+		return false  # standing at the foot
+	if not is_climbing and not on_floor and dir == 0.0:
+		return false  # falling past it: only grabbed by pushing toward or away from it
+	if _buffer > 0.0:
+		# Let go, pushing off backwards.
+		_buffer = 0.0
+		_ladder_cooldown = ladder_regrab
+		velocity = out * 3.5 + Vector3.UP * 2.5
+		jumped.emit()
+		return false
+	var side := ladder.global_basis.x.normalized()
+	var off := at.x * m  # meters from the middle of the ladder
+	var push := wish.dot(side)
+	if is_climbing and absf(off) > climb_side_limit and push * signf(off) > 0.3:
+		# Shuffled off the side: let go.
+		_ladder_cooldown = ladder_regrab
+		return false
+	if is_sliding:
+		_end_slide()
+	var hv := wish * walk_speed * 0.6
+	# Sideways: a slow shuffle, drawn back to the middle when not pushing aside.
+	var lateral := push * climb_side_speed if absf(push) > 0.3 else clampf(-off * 6.0, -1.5, 1.5)
+	hv += side * (lateral - hv.dot(side))
+	# Over the top: stop rising once clear of the landing and step on over onto it,
+	# unless pulling back down.
+	if dir >= 0.0 and (at.y - ladder.height) * m > 0.1:
+		dir = 0.0
+		hv -= out * (walk_speed * 0.6 + hv.dot(out))
+	if at.z * m > climb_reach:
+		hv -= out * maxf(hv.dot(out), 0.0)
+	var cur := Vector3(velocity.x, 0.0, velocity.z).move_toward(hv, ground_accel * delta)
+	velocity = Vector3(cur.x, dir * climb_speed, cur.z)
+	_coyote = 0.0
+	return true
 
 
 func _try_jump() -> void:

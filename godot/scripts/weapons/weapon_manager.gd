@@ -7,6 +7,9 @@ extends Node
 ## look). It only renders VIEW_LAYER, which the main camera skips, so the gun never
 ## clips into walls. Projectiles start at the muzzle as seen on screen and fly toward
 ## whatever is under the crosshair.
+##
+## On a ladder the weapon is put away and both hands come up to the rungs, going hand
+## over hand as the player climbs (see _update_climb()).
 
 signal weapon_changed(weapon: WeaponData)
 signal ammo_changed(ammo_type: String, amount: int)
@@ -57,6 +60,11 @@ const WRIST_LEFT_SUPPORT := Vector3(-0.036, -0.062, 0.08)
 @export var bob_scale := 1.0
 @export var switch_time := 0.14
 
+@export_group("Climbing")
+## Seconds to lower the weapon out of sight on a ladder, and as long again to raise
+## the hands to the rungs (and the same back when getting off).
+@export var holster_time := 0.15
+
 @onready var player: CharacterBody3D = get_parent()
 @onready var camera: Camera3D = player.get_node("Head/Camera3D")
 
@@ -88,6 +96,11 @@ var _kick_v := 0.0
 var _sprint_pose := 0.0
 var _bloom := 0.0
 var _bloom_timer := 0.0
+## Climbing hands: 0 = holding the weapon, 0.5 = weapon put away, 1 = hands on the rungs.
+var _climb_pose := 0.0
+var _climb_hold := 0.0
+var _climb_ladder: Ladder
+var _climb_arms: Array[Dictionary] = []
 
 
 func _ready() -> void:
@@ -134,6 +147,16 @@ func _build_viewmodel() -> void:
 		arm.visible = false
 		_vm_camera.add_child(arm)
 		_forearms.append(arm)
+	# Climbing arms: the grip hands closed around rungs instead of a weapon.
+	for side in [1, -1]:
+		var forearm: Node3D = FOREARM.instantiate()
+		var hand: Node3D = (HAND_RIGHT if side > 0 else HAND_LEFT_GRIP).instantiate()
+		for part in [forearm, hand]:
+			_set_view_layer(part)
+			part.visible = false
+			_vm_camera.add_child(part)
+		_climb_arms.append({"hand": hand, "wrist": WRIST_RIGHT if side > 0 else WRIST_LEFT_GRIP,
+			"forearm": forearm, "shoulder": Vector3(side * 0.22, -0.95, 0.0), "side": side})
 
 
 ## The held weapon gets its own fill light so it reads clearly even when the sun is
@@ -313,8 +336,10 @@ func _make_arm(scene: PackedScene, wrist: Vector3, pos: Vector3, rot_deg: Vector
 ## Point each forearm from its wrist toward the shoulder (after the pose update).
 func _update_arms() -> void:
 	var up := _vm_camera.global_basis.y
-	for a in _arms:
+	for a in _arms + _climb_arms:
 		var forearm: Node3D = a.forearm
+		if not forearm.visible:
+			continue
 		forearm.global_position = a.hand.global_transform * a.wrist
 		forearm.look_at(_vm_camera.global_transform * a.shoulder, up)
 
@@ -361,7 +386,8 @@ func _process(delta: float) -> void:
 	_bloom_timer -= delta
 	if _bloom_timer <= 0.0:
 		_bloom = move_toward(_bloom, 0.0, bloom_recovery * delta)
-	if current and not _switching and not player.dead and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+	if current and not _switching and not player.dead and _climb_pose == 0.0 \
+			and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		var pressed := Input.is_action_pressed("fire") if current.automatic else Input.is_action_just_pressed("fire")
 		if pressed and _cooldown <= 0.0:
 			if ammo[current.ammo_type] > 0 or infinite_ammo:
@@ -369,6 +395,7 @@ func _process(delta: float) -> void:
 			elif Input.is_action_just_pressed("fire"):
 				_play(dry_fire_sound, -6.0)
 				_cooldown = 0.25
+	_update_climb(delta)
 	_update_pose(delta)
 	_update_arms()
 	if _flash_light:
@@ -466,13 +493,89 @@ func _update_pose(delta: float) -> void:
 	var pos := current.view_position + bob
 	pos += Vector3(-_sway.x * 0.15, _sway.y * 0.15, _kick * 0.035)
 	pos += Vector3(-0.04, -0.05, 0.02) * _sprint_pose
-	pos.y -= _lowered * 0.35
+	var lowered := maxf(_lowered, clampf(_climb_pose * 2.0, 0.0, 1.0))  # also put away on ladders
+	pos.y -= lowered * 0.35
 	var rot := current.view_rotation_degrees
 	rot += Vector3(rad_to_deg(_sway.y) * 0.8 + _kick * 5.0, rad_to_deg(_sway.x) * 0.8, rad_to_deg(-_sway.x) * 0.5)
 	rot += Vector3(-12.0, 28.0, 10.0) * _sprint_pose
-	rot.x -= _lowered * 30.0
+	rot.x -= lowered * 30.0
 	_vm_root.position = pos
 	_vm_root.rotation_degrees = rot
+
+
+## Ladders: the weapon drops out of sight, then both hands rise to the rungs. Each hand
+## grips a real rung (every other one, the hands taking turns) and stays on it as the
+## body climbs past, then lets go and reaches up for the next; climbing down runs it
+## backwards. At the top the hands take the front edge of the landing. Getting
+## off brings the weapon back the same way. A short hold keeps the hands up through
+## brief breaks in climbing.
+func _update_climb(delta: float) -> void:
+	var ladder: Ladder = player.current_ladder()
+	if ladder:
+		_climb_ladder = ladder
+	_climb_hold = 0.2 if player.is_climbing else _climb_hold - delta
+	var target := 1.0 if _climb_hold > 0.0 and not player.dead else 0.0
+	_climb_pose = move_toward(_climb_pose, target, delta / (2.0 * holster_time))
+	var holstered := _climb_pose >= 0.5
+	_vm_root.visible = not holstered
+	for f in _forearms:
+		f.visible = current != null and not holstered
+	var raise := clampf(_climb_pose * 2.0 - 1.0, 0.0, 1.0)
+	var shown := raise > 0.0 and is_instance_valid(_climb_ladder)
+	for a in _climb_arms:
+		a.hand.visible = shown
+		a.forearm.visible = shown
+		if shown:
+			a.hand.transform = _climb_hand(a.side, _climb_ladder, raise)
+
+
+## One climbing hand, in the viewmodel camera's space.
+func _climb_hand(side: int, ladder: Ladder, raise: float) -> Transform3D:
+	var step := ladder.rung_spacing
+	var eye_at := ladder.to_local(camera.global_position)
+	var eye := eye_at.y
+	# Each hand takes every other rung. It grabs one just above eye level, holds it for
+	# half the cycle and reaches for its next one over the other half.
+	var first := ladder.first_rung + (0.0 if side > 0 else step)
+	var g := (eye + 0.45 * step - first) / (2.0 * step)
+	var n := floorf(g)
+	var f := g - n
+	var pos := _rung(ladder, side, first + 2.0 * step * n, eye_at.x)
+	var reach := 0.0
+	if f > 0.5:
+		var r := (f - 0.5) * 2.0
+		reach = sin(r * PI)
+		pos = pos.lerp(_rung(ladder, side, first + 2.0 * step * (n + 1.0), eye_at.x), smoothstep(0.0, 1.0, r))
+		pos.z += reach * 0.3 * step  # pulled back off the rungs while reaching
+	# Knuckles up, fingers over the rung, the thumb toward the middle; the back of the
+	# hand tips toward the climber, more so while reaching.
+	var grip := Basis(Vector3(0, side, 0), Vector3(-side, 0, 0), Vector3(0, 0, 1))
+	var tilt := Basis(Vector3.UP, deg_to_rad(-side * 12.0)) * Basis(Vector3.RIGHT, deg_to_rad(35.0 + reach * 30.0))
+	var world := ladder.to_global(pos)
+	# Put the hand where the rung appears on screen (the viewmodel camera's field of view
+	# differs from the game camera's), at the rung's depth.
+	var depth := -camera.to_local(world).z
+	var at := world
+	if depth > _vm_camera.near:
+		at = _vm_camera.project_position(camera.unproject_position(world), depth)
+	var local := _vm_camera.to_local(at)
+	local.y -= (1.0 - raise) * (1.0 - raise) * 0.4  # rising into view as the weapon goes
+	var basis := camera.global_basis.orthonormalized().inverse() * ladder.global_basis.orthonormalized() * tilt * grip
+	return Transform3D(basis, local)
+
+
+## Where a hand holds the ladder at height h (local units): on a rung, or, above the top
+## rung, on the front edge of the landing. Either way it's shoulder width either side of
+## the climber (x, their offset from the middle), sliding along as they shuffle
+## sideways so the arms never stretch out.
+func _rung(ladder: Ladder, side: int, h: float, x: float) -> Vector3:
+	var top_rung := ladder.first_rung + ladder.rung_spacing * floorf((ladder.height - ladder.first_rung) / ladder.rung_spacing - 0.5)
+	var reach := ladder.width / 2.0 - 0.08  # stay inside the rails
+	var at := Vector3(clampf(x + side * 0.11, -reach, reach), maxf(h, ladder.first_rung), 0.0)
+	if h > top_rung + 0.01:
+		at.y = ladder.height
+		at.z = 0.05 - ladder.landing_gap
+	return at
 
 
 func _play(stream: AudioStream, db: float, to: AudioStreamPlayer = null) -> void:

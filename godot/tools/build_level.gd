@@ -7,7 +7,8 @@ extends SceneTree
 ## homestead. An overgrown graveyard and a second pond fill the north. Floating eyes
 ## guard each area and golems the north; weapons (at random spots), ammo, health and an
 ## invulnerability powerup are spread around, and gems are tucked around every landmark.
-## A pair of linked portals joins the west end of the crossroads road to the far north end of the main
+## Two watchtowers joined by a plank bridge guard the west road. Every watchtower's ladder
+## can be climbed. A pair of linked portals joins the west end of the crossroads road to the far north end of the main
 ## road. A creek crosses the south of the valley from cliff to cliff, under a bridge on
 ## the main road. Props are dropped onto the terrain surface.
 ##
@@ -25,6 +26,7 @@ const TERRAIN := preload("res://scripts/terrain.gd")
 const GAS_CAN := preload("res://scripts/gas_can.gd")
 const PHYSICS_PROP := preload("res://scripts/physics_prop.gd")
 const EXPLOSIVE_BARREL := preload("res://scripts/explosive_barrel.gd")
+const LADDER := preload("res://scripts/ladder.gd")
 const TILE := 8.0
 const HALF := 11  # tiles from the center to the edge: 23 x 23 tiles
 ## Half-width of the walkable valley (cliff faces sit just beyond this).
@@ -33,6 +35,13 @@ const EXTENT := HALF * TILE + TILE / 2
 const ROAD_Z := 40.0
 ## z of the creek running east-west across the south of the valley.
 const CREEK_Z := 64.0
+## x of the checkpoint on the west road: two watchtowers either side of the road, joined
+## by a plank bridge.
+const CHECKPOINT_X := -17.5
+## The watchtower model's deck height and the center-to-center spacing at which a
+## bridge_plank joins two of them (model units, before WORLD_SCALE).
+const TOWER_DECK := 4.7
+const TOWER_SPAN := 9.7
 
 var level: Node3D
 var terrain: Terrain
@@ -81,6 +90,7 @@ func _init() -> void:
 	build_pond()
 	build_crossroads()
 	build_creek_crossing()
+	build_checkpoint()
 	build_outpost()
 	build_homestead()
 	build_graveyard()
@@ -90,6 +100,7 @@ func _init() -> void:
 	build_enemies()
 	build_portals()
 	clear_creek()
+	clear_checkpoint()
 	var packed := PackedScene.new()
 	var err := packed.pack(level)
 	if err == OK:
@@ -131,6 +142,15 @@ func place(group: String, name: String, x: float, z: float, rot := 0.0, y = null
 		inst.set_script(EXPLOSIVE_BARREL)  # knocked about, and blows up like a gas can
 	groups[group].add_child(inst, true)
 	inst.owner = level
+	if name == "watchtower":
+		# Its ladder (on the model's +Z side) climbs to the deck.
+		var ladder := Area3D.new()
+		ladder.set_script(LADDER)
+		ladder.name = "Ladder"
+		ladder.position = Vector3(0.0, 0.0, 2.1)
+		ladder.height = TOWER_DECK
+		inst.add_child(ladder)
+		ladder.owner = level
 	return inst
 
 
@@ -184,6 +204,13 @@ func is_clear(x: float, z: float) -> bool:
 	if Vector2(x - 20, z - 20).length() < 5.0:
 		return false  # watchtower
 	return true
+
+
+## The checkpoint's watchtowers and the ground under its bridge, kept clear of nature
+## (see clear_checkpoint()).
+func in_checkpoint(x: float, z: float) -> bool:
+	var half := TOWER_SPAN * WORLD_SCALE["watchtower"] / 2.0 + 4.5
+	return absf(x - CHECKPOINT_X) < 4.5 and absf(z - ROAD_Z) < half
 
 
 ## Low-frequency noise that gathers trees into groves, leaving open meadows between.
@@ -254,7 +281,8 @@ func build_terrain() -> void:
 	terrain.flat_rects = [Rect2(-51, 43, 30, 15), Rect2(21, 43, 30, 15), Rect2(-50, -56, 27, 27),
 		Rect2(-17, -18, 16, 27), Rect2(3, -2, 12, 14), Rect2(-11, -35, 20, 18)]
 	terrain.flat_circles = PackedVector3Array([Vector3(32, -40, 8), Vector3(16, -8, 7), Vector3(20, 20, 5),
-		Vector3(0, 30, 6), Vector3(0, ROAD_Z, 6), Vector3(-50, ROAD_Z, 4.5), Vector3(0, -50, 4.5)])
+		Vector3(0, 30, 6), Vector3(0, ROAD_Z, 6), Vector3(-50, ROAD_Z, 4.5), Vector3(0, -50, 4.5),
+		Vector3(CHECKPOINT_X, ROAD_Z - checkpoint_offset(), 5), Vector3(CHECKPOINT_X, ROAD_Z + checkpoint_offset(), 5)])
 	terrain.keep_faces = true
 	terrain.build()
 	terrain_faces = terrain.tile_faces
@@ -383,6 +411,26 @@ func build_creek_crossing() -> void:
 	place("Crossroads", "bridge_wood", 0.0, CREEK_Z, 0.0, 0.08, 1.3)
 
 
+## Distance from the road's center line to each checkpoint watchtower.
+func checkpoint_offset() -> float:
+	return TOWER_SPAN * WORLD_SCALE["watchtower"] / 2.0
+
+
+## A checkpoint on the west road, by the wire roadblock: a watchtower either side of the
+## road with their bridge gaps (the model's -Z side) facing each other, and a plank
+## bridge high over the road between them. Each tower's ladder faces away from the road.
+func build_checkpoint() -> void:
+	var s: float = WORLD_SCALE["watchtower"]
+	var d := checkpoint_offset()
+	var south := place("Crossroads", "watchtower", CHECKPOINT_X, ROAD_Z - d, 180.0)
+	var north := place("Crossroads", "watchtower", CHECKPOINT_X, ROAD_Z + d, 0.0)
+	# The bridge's ends rest on the two decks; tilt it if the ground differs.
+	var deck := TOWER_DECK * s
+	var bridge := place("Crossroads", "bridge_plank", CHECKPOINT_X, ROAD_Z, 0.0,
+		(south.position.y + north.position.y) / 2.0 + deck, s)
+	bridge.rotation.x = -atan2(north.position.y - south.position.y, 2.0 * d)
+
+
 ## Removes the scattered nature that landed in the creek. Done afterwards rather than by
 ## skipping those spots while scattering, so everything else keeps its place.
 func clear_creek() -> void:
@@ -392,11 +440,20 @@ func clear_creek() -> void:
 			n.free()
 
 
+## Removes the scattered nature that landed under the checkpoint's towers and bridge,
+## the same way as clear_creek().
+func clear_checkpoint() -> void:
+	for n: Node3D in groups["Nature"].get_children():
+		if in_checkpoint(n.position.x, n.position.z):
+			groups["Nature"].remove_child(n)
+			n.free()
+
+
 ## Abandoned military outpost: tents, a watchtower, supply stacks, shipping containers
 ## and a fenced yard ringed with barbed wire.
 func build_outpost() -> void:
 	var g := "Outpost"
-	place(g, "watchtower", -46.0, 52.0, 15.0)
+	place(g, "watchtower", -46.0, 52.0, 195.0)  # ladder toward the camp
 	place(g, "tent", -30.0, 52.0, 30.0)
 	place(g, "tent", -35.0, 54.5, -15.0)
 	place(g, "tent", -41.0, 48.0, 90.0)
@@ -555,7 +612,7 @@ func build_pickups() -> void:
 	# Health: [amount, model, scale, positions]
 	var health := [
 		[40, "pickup_medkit", 1.4, [Vector2(-30, 46.5), Vector2(-36, -46.5), Vector2(40, 54.5), Vector2(-6.5, 1.5)]],
-		[15, "pickup_health_vial", 2.0, [Vector2(12, -15), Vector2(1.5, -40), Vector2(24, 30), Vector2(-20, 30),
+		[15, "pickup_health_vial", 2.0, [Vector2(12, -15), Vector2(1.5, -40), Vector2(24, 30), Vector2(-22, 28.5),
 			Vector2(-14, -24), Vector2(44, 20)]],
 	]
 	for h in health:
@@ -568,7 +625,8 @@ func build_pickups() -> void:
 			pk.respawn_time = 25.0
 			pk.name = "health"
 	# Gems: collectibles tucked around every landmark (and a few out in the wilds), taken
-	# for good. A y of -1 means on the ground; otherwise on a bridge deck.
+	# for good. A y of -1 means on the ground; otherwise on a bridge deck (-2: the
+	# checkpoint's bridge, high over the west road).
 	var gems := [
 		[-9.0, -16.0, -1], [-15.5, 3.0, -1],  # village
 		[12.5, 11.0, -1], [4.5, -0.5, -1],  # campsite
@@ -580,10 +638,13 @@ func build_pickups() -> void:
 		[-41.5, 51.0, -1], [-33.0, 55.5, -1],  # outpost
 		[37.5, 49.5, -1], [46.0, 59.5, -1],  # homestead
 		[6.0, 35.5, -1],  # crossroads
+		[CHECKPOINT_X, ROAD_Z, -2],  # on the checkpoint bridge
 		[-20.0, 64.0, -1], [22.0, 64.5, -1],  # in the creek
 	]
 	for gm in gems:
-		var y: float = ground(gm[0], gm[1]) if gm[2] < 0 else gm[2]
+		var y: float = ground(gm[0], gm[1]) if gm[2] == -1 else gm[2]
+		if gm[2] == -2:
+			y = ground(CHECKPOINT_X, ROAD_Z - checkpoint_offset()) + TOWER_DECK * WORLD_SCALE["watchtower"] - 0.2
 		var pk := pickup(gm[0], gm[1], y)
 		pk.kind = PICKUP.Kind.GEM
 		pk.amount = 1

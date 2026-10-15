@@ -337,7 +337,7 @@ def showcase(cam, sun):
     place("enemy_slime", 7.5, -4.5, rot=30)
     place("enemy_spider", -9.5, 7.5, rot=-30)
     place("enemy_golem", 13, 4.5, rot=-50)
-    place("enemy_turret", 15, 7, z=ground(15, 7) + 4.1, rot=-30)
+    place("enemy_turret", 15, 7, z=ground(15, 7) + 4.7, rot=-30)
     place("enemy_floating_eye", -2.5, 1.5, lift=2.6, rot=20)
     place("pickup_medkit", -0.5, -6.5, rot=20)
     place("pickup_ammo_shells", 0.6, -5.2, rot=-30)
