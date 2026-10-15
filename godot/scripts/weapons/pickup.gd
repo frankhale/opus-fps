@@ -8,6 +8,9 @@ extends Area3D
 ## gems are collectibles, so they are always taken for good, with a sparkle.
 ## With `random_spot` set, the pickup ignores where it was placed: when the game starts and
 ## each time it respawns it moves to a random open spot on the ground somewhere in the valley.
+## Weapons glow in their projectile color so they stand out from afar: a beam of light
+## rises from them and a soft halo surrounds them (materials/pickup_beam.gdshader, both
+## widening with distance), the model shimmers and a light pulses.
 ## (@tool so the model also shows in the editor.)
 
 enum Kind { WEAPON, AMMO, HEALTH, GEM, POWERUP }
@@ -28,6 +31,11 @@ const SPOT_PLAYER_CLEARANCE := 15.0
 const SPOT_EDGE_MARGIN := 22.0
 ## Tiles a random spot may not use (water).
 const SPOT_BAD_TILES := ["", "terrain_pond", "terrain_creek"]
+const BEAM_SHADER := preload("res://materials/pickup_beam.gdshader")
+const BEAM_HEIGHT := 9.0
+## Visual layer bit for the beam and halo (layer 4), so the minimap's world-only
+## snapshot skips them.
+const BEAM_LAYER := 8
 
 @export var kind := Kind.AMMO
 @export var weapon: WeaponData
@@ -55,6 +63,11 @@ var _base_scale := Vector3.ONE
 var _available := true
 var _t := 0.0
 var _age := 0.0
+var _glow: OmniLight3D
+## Weapons only: the beam, the halo, and the additive overlay that makes the model shimmer.
+var _beam: MeshInstance3D
+var _halo: MeshInstance3D
+var _shimmer: StandardMaterial3D
 
 
 func _ready() -> void:
@@ -75,12 +88,14 @@ func _ready() -> void:
 		_model.position.y = hover_height
 		add_child(_model)
 	if kind == Kind.WEAPON and weapon or kind == Kind.GEM or kind == Kind.POWERUP:
-		var glow := OmniLight3D.new()
-		glow.light_color = weapon.projectile_color if kind == Kind.WEAPON else _color()
-		glow.omni_range = 2.5
-		glow.light_energy = 0.8
-		glow.position.y = 0.5
-		add_child(glow)
+		_glow = OmniLight3D.new()
+		_glow.light_color = weapon.projectile_color if kind == Kind.WEAPON else _color()
+		_glow.omni_range = 2.5
+		_glow.light_energy = 0.8
+		_glow.position.y = 0.5
+		add_child(_glow)
+	if kind == Kind.WEAPON and weapon and _model:
+		_add_weapon_glow(weapon.projectile_color)
 	if kind == Kind.GEM:
 		one_shot = true
 
@@ -101,12 +116,69 @@ func _ready() -> void:
 			_model.visible = true
 
 
+## The beam, the halo, the shimmer overlay on every mesh of the model, and a bigger light.
+func _add_weapon_glow(color: Color) -> void:
+	_glow.omni_range = 4.0
+	_glow.light_energy = 1.5
+	_shimmer = StandardMaterial3D.new()
+	_shimmer.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_shimmer.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	for g: GeometryInstance3D in _model.find_children("*", "GeometryInstance3D", true, false):
+		g.material_overlay = _shimmer
+
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = 0.25
+	mesh.bottom_radius = 0.4
+	mesh.height = BEAM_HEIGHT
+	mesh.radial_segments = 12
+	mesh.rings = 1
+	mesh.cap_top = false
+	mesh.cap_bottom = false
+	var mat := ShaderMaterial.new()
+	mat.shader = BEAM_SHADER
+	mat.set_shader_parameter("color", color)
+	mat.set_shader_parameter("height", BEAM_HEIGHT)
+	_beam = _glow_mesh(mesh, mat)
+	_beam.position.y = BEAM_HEIGHT / 2.0
+
+	var quad := QuadMesh.new()
+	quad.size = Vector2(2.4, 2.4)
+	var halo_mat := mat.duplicate() as ShaderMaterial
+	halo_mat.set_shader_parameter("halo", true)
+	halo_mat.set_shader_parameter("strength", 0.8)
+	_halo = _glow_mesh(quad, halo_mat)
+	_halo.position.y = hover_height
+	# The billboard moves its vertices in the shader; keep it from being culled early.
+	_halo.extra_cull_margin = 8.0
+
+
+func _glow_mesh(mesh: Mesh, mat: Material) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.layers = BEAM_LAYER
+	add_child(mi)
+	return mi
+
+
 func _process(delta: float) -> void:
 	if Engine.is_editor_hint() or _model == null:
 		return
 	_t += delta
 	_model.rotate_y(spin_speed * delta)
 	_model.position.y = hover_height + sin(_t * 2.0) * 0.1
+	if _beam:
+		var shown := _available and _model.visible
+		var pulse := 0.5 + 0.5 * sin(_t * 2.5)
+		_beam.visible = shown
+		_halo.visible = shown
+		_glow.visible = shown
+		_glow.light_energy = 1.1 + 0.8 * pulse
+		_beam.material_override.set_shader_parameter("pulse", 0.7 + 0.3 * pulse)
+		_halo.material_override.set_shader_parameter("pulse", 0.7 + 0.3 * pulse)
+		var c := weapon.projectile_color * (0.35 + 0.35 * pulse)
+		_shimmer.albedo_color = Color(c.r, c.g, c.b)
 	if lifetime > 0.0 and _available:
 		_age += delta
 		if _age > lifetime - 3.0:
