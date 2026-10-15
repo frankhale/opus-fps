@@ -1,7 +1,10 @@
 class_name Enemy
 extends CharacterBody3D
-## What every enemy shares: it idles near home until it sees the player, then hunts
-## them, keeping them in mind for `memory` seconds after losing sight. Shots flash it
+## What every enemy shares: it idles near home until the player comes within
+## `aggro_radius` of it (shown by a see-through dark red ring on the ground) or shoots
+## it, then hunts them. It gives up once the player gets `deaggro_range` away (a shot
+## from farther keeps it after them for `memory` seconds), stays out of sight for
+## `memory` seconds, or it strays `leash` from home, and drifts back. Shots flash it
 ## and knock it back; when killed it hides its model, drops loot (ammo for the player's
 ## weapons or health, and gems) and respawns at home a while later, out of the player's sight.
 ## A subclass builds its own body in _ready() (calling _setup() for the model, sounds
@@ -20,11 +23,23 @@ const AMMO_MODELS := {
 const LOOT_AMMO := {"bullets": 15, "shells": 4, "rockets": 2, "cells": 20}
 ## Physics layer bit for enemies (layer 3).
 const ENEMY_LAYER := 4
+## Visual layer bit for enemy models and aggro rings (layer 3), so a ring's decal skips
+## its enemy and the minimap's world-only snapshot leaves both out.
+const ENEMY_VISUAL_LAYER := 4
+const RING_COLOR := Color(0.4, 0.02, 0.02)
+## Height of the ring's decal box, centered on the ground under the enemy.
+const RING_DEPTH := 4.0
 
 @export var max_health := 80.0
-@export var sight_range := 26.0
-## Once alerted it keeps chasing this long after losing sight of the player.
+## It notices the player within this many meters (across the ground) if it can see them.
+@export var aggro_radius := 5.0
+## Once hunting, it gives up as soon as the player is this far away (across the ground).
+@export var deaggro_range := 20.0
+## It also gives up when it hasn't seen the player for this long, and a shot keeps it
+## hunting this long however far away the shooter is.
 @export var memory := 4.0
+## It gives up at once when chasing takes it this far from home.
+@export var leash := 30.0
 @export var respawn_time := 45.0
 @export var model_scale := 1.0
 ## How far a hit pushes it, per point of damage (heavy enemies barely move).
@@ -48,10 +63,15 @@ var _flash: StandardMaterial3D
 ## Hit flash, 1 on a hit and fading out.
 var _flash_amount := 0.0
 var _memory_timer := 0.0
+## Seconds left of the grace a shot gives it beyond deaggro_range.
+var _provoked := 0.0
 var _hurt_cooldown := 0.0
 var _t := 0.0
 var _audio: AudioStreamPlayer3D
 var _sounds: Dictionary
+var _ring: Decal
+
+static var _ring_texture: Texture2D
 
 
 ## Adds the model and the sound player, and makes the hit-flash overlay. `sounds` maps
@@ -66,6 +86,7 @@ func _setup(model: PackedScene, sounds: Dictionary) -> void:
 	add_child(_model)
 	for g in _model.find_children("*", "GeometryInstance3D", true, false):
 		_meshes.append(g)
+		g.layers = ENEMY_VISUAL_LAYER
 	_flash = StandardMaterial3D.new()
 	_flash.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_flash.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
@@ -76,9 +97,38 @@ func _setup(model: PackedScene, sounds: Dictionary) -> void:
 	_audio.max_polyphony = 3
 	add_child(_audio)
 
+	_ring = Decal.new()
+	_ring.texture_albedo = _make_ring_texture()
+	_ring.size = Vector3(aggro_radius * 2.0, RING_DEPTH, aggro_radius * 2.0)
+	_ring.modulate = RING_COLOR
+	_ring.cull_mask &= ~ENEMY_VISUAL_LAYER
+	_ring.layers = ENEMY_VISUAL_LAYER
+	_ring.upper_fade = 0.5
+	_ring.lower_fade = 0.5
+	_ring.top_level = true
+	add_child(_ring)
+
 	_home = global_position
 	health = max_health
 	_t = randf() * TAU
+
+
+## A soft filled disc with a stronger rim, white so the decal's modulate colors it.
+## Shared by every enemy.
+static func _make_ring_texture() -> Texture2D:
+	if _ring_texture:
+		return _ring_texture
+	const N := 128
+	var img := Image.create(N, N, false, Image.FORMAT_RGBA8)
+	for y in N:
+		for x in N:
+			var r := Vector2(x + 0.5 - N / 2.0, y + 0.5 - N / 2.0).length() / (N / 2.0)
+			var a := 0.0
+			if r < 1.0:
+				a = 0.22 + 0.5 * smoothstep(0.9, 0.97, r) * (1.0 - smoothstep(0.97, 1.0, r))
+			img.set_pixel(x, y, Color(1, 1, 1, a))
+	_ring_texture = ImageTexture.create_from_image(img)
+	return _ring_texture
 
 
 ## Where it sees from and aims from.
@@ -94,21 +144,33 @@ func _update_awareness(delta: float) -> void:
 	if _player == null:
 		# Looked up lazily: the level (and its enemies) is ready before the player is.
 		_player = get_tree().get_first_node_in_group("player")
+	_ring.global_position = Vector3(global_position.x, _ground_y(), global_position.z)
 	if _player == null or _player.get("dead"):
 		if alerted:
-			alerted = false
-			_on_lost_sight()
+			_lose_interest()
 		return
-	var sees := _eye_point().distance_to(_player_center()) < sight_range and _line_of_sight()
-	if sees:
-		if not alerted:
+	var off := _player.global_position - global_position
+	var dist := Vector2(off.x, off.z).length()
+	if not alerted:
+		if dist < aggro_radius and _line_of_sight():
 			_alert()
+			_memory_timer = memory
+		return
+	_provoked -= delta
+	var home_off := global_position - _home
+	if Vector2(home_off.x, home_off.z).length() > leash or (dist > deaggro_range and _provoked <= 0.0):
+		_lose_interest()
+	elif _line_of_sight():
 		_memory_timer = memory
-	elif alerted:
+	else:
 		_memory_timer -= delta
 		if _memory_timer <= 0.0:
-			alerted = false
-			_on_lost_sight()
+			_lose_interest()
+
+
+func _lose_interest() -> void:
+	alerted = false
+	_on_lost_sight()
 
 
 func _alert() -> void:
@@ -122,7 +184,7 @@ func _on_alert() -> void:
 	pass
 
 
-## Gave up the hunt: the player got away or died.
+## Gave up the hunt: the player got away or died, or it strayed too far from home.
 func _on_lost_sight() -> void:
 	pass
 
@@ -167,6 +229,7 @@ func take_damage(amount: float, _at := Vector3.ZERO, dir := Vector3.ZERO) -> voi
 	if not alerted:
 		_alert()
 	_memory_timer = memory
+	_provoked = memory
 	if health <= 0.0:
 		_die()
 	elif _hurt_cooldown <= 0.0:
@@ -179,6 +242,7 @@ func _die() -> void:
 	alerted = false
 	collision_layer = 0
 	_model.visible = false
+	_ring.visible = false
 	_flash_amount = 0.0
 	_set_glow(Color.BLACK, 0.0)
 	_on_death()
@@ -243,6 +307,7 @@ func _try_respawn() -> void:
 	dead = false
 	collision_layer = ENEMY_LAYER
 	_model.visible = true
+	_ring.visible = true
 	_model.scale = Vector3.ZERO
 	create_tween().tween_property(_model, "scale", Vector3.ONE * model_scale, 0.6) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)

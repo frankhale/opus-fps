@@ -1,6 +1,6 @@
 class_name FloatingEye
 extends Enemy
-## The floating eye: hovers around its home until it sees the player, screeches and
+## The floating eye: hovers around its home until the player comes near, screeches and
 ## gives chase, holding a preferred distance while strafing. It telegraphs each
 ## attack (the eye glows and whines) before spitting a slow, dodgeable bolt.
 ## Shots flash it red and knock it back; when killed it bursts in gore (loot and

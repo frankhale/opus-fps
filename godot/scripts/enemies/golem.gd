@@ -2,9 +2,9 @@ class_name Golem
 extends Enemy
 ## The rock golem: a slow, heavy brute of mossy boulders with no legs, held up off the
 ## ground by an electric charge that crackles from its hips down to the ground
-## (ElectricArcs), with a low electric hum. Once it sees the player it drifts after
-## them. Out of reach it throws a ball of lightning; up close it gathers its charge and
-## discharges it into the ground, a shock ring that hurts and throws back anyone nearby
+## (ElectricArcs), with a low electric hum. Once the player comes near it drifts
+## after them. Out of reach it throws a ball of lightning; up close it gathers its
+## charge and discharges it into the ground, a shock ring that hurts and throws back anyone nearby
 ## (and sets off gas cans and explosive barrels). Both are telegraphed: arcs crawl up
 ## its body, its crack and eyes glow and the buzz rises. Shots barely move it. When
 ## killed the charge bursts and it falls apart into rubble, leaving three gems.
@@ -73,7 +73,6 @@ var _wander_timer := 0.0
 
 func _init() -> void:
 	max_health = 320.0
-	sight_range = 28.0
 	memory = 6.0
 	respawn_time = 60.0
 	model_scale = 1.15
