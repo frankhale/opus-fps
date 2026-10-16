@@ -27,6 +27,9 @@ extends Resource
 @export_enum("support", "grip") var left_hand_style := "support"
 @export var left_hand_position := Vector3(0.0, 0.03, -0.35)
 @export var left_hand_rotation_degrees := Vector3.ZERO
+## Picking up a second one puts it in the left hand (mirroring the right, each held in
+## one hand), and the two fire in turn.
+@export var dual_wield := false
 
 @export_group("Firing")
 ## Hold to keep firing (otherwise one shot per click).

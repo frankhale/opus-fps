@@ -8,8 +8,15 @@ extends Node
 ## clips into walls. Projectiles start at the muzzle as seen on screen and fly toward
 ## whatever is under the crosshair.
 ##
+## Shots kick the gun back and up with a random twist and roll (see GunRecoil), the
+## view kicks with it, and bullet and shell guns throw out spent casings.
+##
 ## On a ladder the weapon is put away and both hands come up to the rungs, going hand
 ## over hand as the player climbs (see _update_climb()).
+##
+## A second copy of a `dual_wield` weapon (the pistol) goes in the left hand: the two
+## guns mirror each other, one in each hand, and shots alternate between them, each
+## from its own muzzle with its own flash and kick. They share one ammo supply.
 
 signal weapon_changed(weapon: WeaponData)
 signal ammo_changed(ammo_type: String, amount: int)
@@ -59,6 +66,9 @@ const WRIST_LEFT_SUPPORT := Vector3(-0.036, -0.062, 0.08)
 @export var sway_limit := 0.09
 @export var bob_scale := 1.0
 @export var switch_time := 0.14
+## With a gun in each hand, the delay between shots is the weapon's fire_interval times
+## this (each gun on its own fires a little slower than a single one would).
+@export var dual_interval_scale := 0.6
 
 @export_group("Climbing")
 ## Seconds to lower the weapon out of sight on a ladder, and as long again to raise
@@ -71,6 +81,8 @@ const WRIST_LEFT_SUPPORT := Vector3(-0.036, -0.062, 0.08)
 var weapons: Array[WeaponData] = []
 var ammo := {}
 var current: WeaponData
+## Weapons the player has picked up two of, held one in each hand (see dual_wield).
+var dual: Array[WeaponData] = []
 ## Shots don't use up ammo (god mode).
 var infinite_ammo := false
 
@@ -85,14 +97,21 @@ var _forearms: Array[Node3D] = []
 var _flash: Node3D
 var _flash_time := 0.0
 var _flash_light: OmniLight3D
+## The second (left-hand) gun while dual wielding: {root, model, muzzle, flash, light,
+## flash_time, recoil}; empty otherwise. `_vm_left` is its pose root.
+var _left := {}
+var _vm_left: Node3D
+## Which gun fires next while dual wielding.
+var _left_next := false
 var _fire_audio: AudioStreamPlayer
 var _ui_audio: AudioStreamPlayer
 var _cooldown := 0.0
 var _switching := false
 var _lowered := 1.0
 var _sway := Vector2.ZERO
-var _kick := 0.0
-var _kick_v := 0.0
+var _recoil := GunRecoil.new()
+## Spent casings tumbling away: {node, velocity, spin, life}, in camera space.
+var _casings: Array[Dictionary] = []
 var _sprint_pose := 0.0
 ## Jump inertia: the weapon trails the body's vertical motion on a spring.
 var _air := 0.0
@@ -147,6 +166,8 @@ func _build_viewmodel() -> void:
 	_vm_camera.current = true
 	_vm_root = Node3D.new()
 	_vm_camera.add_child(_vm_root)
+	_vm_left = Node3D.new()
+	_vm_camera.add_child(_vm_left)
 	for i in 2:
 		var arm: Node3D = FOREARM.instantiate()
 		_set_view_layer(arm)
@@ -192,6 +213,12 @@ func give_weapon(w: WeaponData) -> bool:
 		message.emit("Picked up the %s" % w.display_name)
 		equip(w)
 		return true
+	if w.dual_wield and not dual.has(w):
+		dual.append(w)
+		_play(pickup_weapon_sound, -4.0)
+		message.emit("Picked up a second %s" % w.display_name)
+		equip(w, true)
+		return true
 	if took_ammo:
 		_play(pickup_ammo_sound, -8.0)
 		message.emit("+%d %s" % [w.ammo_on_pickup, w.ammo_type])
@@ -206,6 +233,11 @@ func give_all_weapons() -> void:
 		var w := load("res://weapons/" + f) as WeaponData if f.ends_with(".tres") else null
 		if w and w.model and not weapons.has(w):
 			weapons.append(w)
+	for w in weapons:
+		if w.dual_wield and not dual.has(w):
+			dual.append(w)
+			if w == current:
+				equip(w, true)
 	weapons.sort_custom(func(a, b): return a.slot < b.slot)
 	for t in MAX_AMMO:
 		ammo[t] = MAX_AMMO[t]
@@ -231,8 +263,9 @@ func _add_ammo(type: String, amount: int) -> bool:
 	return true
 
 
-func equip(w: WeaponData) -> void:
-	if w == current or _switching or not weapons.has(w):
+## `regrip` re-draws the weapon already in hand (a second one was just picked up).
+func equip(w: WeaponData, regrip := false) -> void:
+	if (w == current and not regrip) or _switching or not weapons.has(w):
 		return
 	_switching = true
 	var tween := create_tween()
@@ -254,7 +287,6 @@ func _swap_model(w: WeaponData) -> void:
 	_muzzle = Node3D.new()
 	_muzzle.position = w.muzzle
 	_model.add_child(_muzzle)
-	_attach_hands(w)
 	_flash = _make_flash(w)
 	_muzzle.add_child(_flash)
 	_flash_light = OmniLight3D.new()
@@ -262,8 +294,36 @@ func _swap_model(w: WeaponData) -> void:
 	_flash_light.omni_range = 4.0
 	_flash_light.light_energy = 0.0
 	_muzzle.add_child(_flash_light)
+	_build_left(w)
+	_attach_hands(w)
 	weapon_changed.emit(w)
 	ammo_changed.emit(w.ammo_type, ammo[w.ammo_type])
+
+
+## The second gun for the left hand when the player has two of `w`, or none.
+func _build_left(w: WeaponData) -> void:
+	if not _left.is_empty():
+		_left.model.queue_free()
+	_left = {}
+	_left_next = false
+	if not dual.has(w):
+		return
+	var model: Node3D = w.model.instantiate()
+	model.scale = Vector3.ONE * w.view_scale
+	_vm_left.add_child(model)
+	_set_view_layer(model)
+	var muzzle := Node3D.new()
+	muzzle.position = w.muzzle
+	model.add_child(muzzle)
+	var flash := _make_flash(w)
+	muzzle.add_child(flash)
+	var light := OmniLight3D.new()
+	light.light_color = w.projectile_color
+	light.omni_range = 4.0
+	light.light_energy = 0.0
+	muzzle.add_child(light)
+	_left = {"model": model, "muzzle": muzzle, "flash": flash, "light": light, "flash_time": 0.0,
+		"recoil": GunRecoil.new()}
 
 
 ## Muzzle flash sized to the weapon: a glowing star facing the camera plus a pair
@@ -313,8 +373,9 @@ func _flash_part(mesh: Mesh, mat: Material, pos: Vector3, orientation: Basis) ->
 
 
 ## Re-grip for this weapon: right hand on the grip, left hand on its pump, handguard
-## or front grip. Hands live under the pose root (not the model) so a weapon's
-## view_scale never shrinks them.
+## or front grip, or, dual wielding, on the grip of the left gun (mirroring the right
+## hand). Hands live under the pose roots (not the models) so a weapon's view_scale
+## never shrinks them.
 func _attach_hands(w: WeaponData) -> void:
 	for a in _arms:
 		a.hand.queue_free()
@@ -322,20 +383,26 @@ func _attach_hands(w: WeaponData) -> void:
 	var left_grip := w.left_hand_style == "grip"
 	_arms.append(_make_arm(HAND_RIGHT, WRIST_RIGHT, w.right_hand_position, w.right_hand_rotation_degrees,
 		_forearms[0], right_shoulder))
-	_arms.append(_make_arm(HAND_LEFT_GRIP if left_grip else HAND_LEFT_SUPPORT,
-		WRIST_LEFT_GRIP if left_grip else WRIST_LEFT_SUPPORT, w.left_hand_position, w.left_hand_rotation_degrees,
-		_forearms[1], left_shoulder))
+	if not _left.is_empty():
+		var p := w.right_hand_position
+		var r := w.right_hand_rotation_degrees
+		_arms.append(_make_arm(HAND_LEFT_GRIP, WRIST_LEFT_GRIP, Vector3(-p.x, p.y, p.z), Vector3(r.x, -r.y, -r.z),
+			_forearms[1], left_shoulder, _vm_left, _left.model))
+	else:
+		_arms.append(_make_arm(HAND_LEFT_GRIP if left_grip else HAND_LEFT_SUPPORT,
+			WRIST_LEFT_GRIP if left_grip else WRIST_LEFT_SUPPORT, w.left_hand_position, w.left_hand_rotation_degrees,
+			_forearms[1], left_shoulder))
 	for f in _forearms:
 		f.visible = true
 
 
 func _make_arm(scene: PackedScene, wrist: Vector3, pos: Vector3, rot_deg: Vector3, forearm: Node3D,
-		shoulder: Vector3) -> Dictionary:
+		shoulder: Vector3, root: Node3D = _vm_root, model: Node3D = _model) -> Dictionary:
 	var hand: Node3D = scene.instantiate()
 	_set_view_layer(hand)
-	_vm_root.add_child(hand)
+	root.add_child(hand)
 	var rot := Vector3(deg_to_rad(rot_deg.x), deg_to_rad(rot_deg.y), deg_to_rad(rot_deg.z))
-	hand.transform = Transform3D(Basis.from_euler(rot), _model.transform * pos)
+	hand.transform = Transform3D(Basis.from_euler(rot), model.transform * pos)
 	return {"hand": hand, "wrist": wrist, "forearm": forearm, "shoulder": shoulder}
 
 
@@ -408,11 +475,18 @@ func _process(delta: float) -> void:
 		_flash_light.light_energy = move_toward(_flash_light.light_energy, 0.0, delta * 40.0)
 		_flash_time -= delta
 		_flash.visible = _flash_time > 0.0
+	if not _left.is_empty():
+		_left.light.light_energy = move_toward(_left.light.light_energy, 0.0, delta * 40.0)
+		_left.flash_time -= delta
+		_left.flash.visible = _left.flash_time > 0.0
 
 
 func _fire() -> void:
 	var w := current
-	_cooldown = w.fire_interval
+	# Dual wielding, the guns take turns.
+	var left := not _left.is_empty() and _left_next
+	_left_next = not _left.is_empty() and not _left_next
+	_cooldown = w.fire_interval * (dual_interval_scale if not _left.is_empty() else 1.0)
 	if not infinite_ammo:
 		ammo[w.ammo_type] -= 1
 		ammo_changed.emit(w.ammo_type, ammo[w.ammo_type])
@@ -426,7 +500,7 @@ func _fire() -> void:
 
 	# Start where the muzzle appears on screen; if a wall is in the way (gun poking
 	# into it), detonate right there instead.
-	var spawn := _muzzle_world_point()
+	var spawn := _muzzle_world_point(_left.muzzle if left else _muzzle)
 	var block := space.intersect_ray(PhysicsRayQueryParameters3D.create(eye, spawn, 1, [player.get_rid()]))
 	for i in w.projectiles_per_shot:
 		var p := Projectile.new()
@@ -442,16 +516,24 @@ func _fire() -> void:
 
 	_bloom = minf(_bloom + bloom_per_shot * w.recoil, bloom_max)
 	_bloom_timer = w.fire_interval + bloom_hold
-	_flash.visible = true
-	_flash.rotation.z = randf() * TAU
-	_flash.scale = Vector3.ONE * randf_range(0.85, 1.2)
-	_flash_time = 0.06
-	_flash_light.light_energy = 1.5 + w.muzzle_flash_size() * 6.0
-	_kick_v += 9.0 * w.recoil
+	var flash: Node3D = _left.flash if left else _flash
+	flash.visible = true
+	flash.rotation.z = randf() * TAU
+	flash.scale = Vector3.ONE * randf_range(0.85, 1.2)
+	var flash_energy := 1.5 + w.muzzle_flash_size() * 6.0
+	if left:
+		_left.flash_time = 0.06
+		_left.light.light_energy = flash_energy
+		(_left.recoil as GunRecoil).fire(w.recoil, -1.0)
+	else:
+		_flash_time = 0.06
+		_flash_light.light_energy = flash_energy
+		_recoil.fire(w.recoil, 1.0)
+	_eject_casing(w, _left.model if left else _model, -1.0 if left else 1.0)
 	if camera.has_method("kick"):
-		camera.kick(0.9 * w.recoil)
-	if w.recoil >= 2.0 and camera.has_method("add_trauma"):
-		camera.add_trauma(0.12 * w.recoil)
+		camera.kick(1.3 * w.recoil)
+	if camera.has_method("add_trauma"):
+		camera.add_trauma(0.12 * w.recoil if w.recoil >= 2.0 else 0.06 * w.recoil)
 	_play(w.fire_sound, fire_volume_db, _fire_audio)
 
 
@@ -465,10 +547,10 @@ func current_spread() -> float:
 	return current.spread_degrees + _bloom + move + air
 
 
-func _muzzle_world_point() -> Vector3:
+func _muzzle_world_point(muzzle: Node3D) -> Vector3:
 	# The viewmodel camera has its own FOV, so map the muzzle through screen space:
 	# the returned point appears exactly at the muzzle in the main camera's view.
-	var mp := _muzzle.global_position
+	var mp := muzzle.global_position
 	var depth := (mp - _vm_camera.global_position).dot(-_vm_camera.global_basis.z)
 	return camera.project_position(_vm_camera.unproject_position(mp), depth)
 
@@ -488,8 +570,8 @@ func _update_pose(delta: float) -> void:
 	if current == null:
 		return
 	_sway = _sway.lerp(Vector2.ZERO, 1.0 - exp(-7.0 * delta))
-	_kick_v += (-220.0 * _kick - 20.0 * _kick_v) * delta
-	_kick += _kick_v * delta
+	_recoil.update(delta)
+	_update_casings(delta)
 	# Rising, the weapon lags low; falling, it floats up; landings slam it down.
 	var air_rest := 0.0 if player.is_on_floor() else clampf(-player.velocity.y * 0.005, -0.03, 0.035)
 	_air_v += (-160.0 * (_air - air_rest) - 14.0 * _air_v) * delta
@@ -497,22 +579,72 @@ func _update_pose(delta: float) -> void:
 	var sprinting: bool = player.is_sprinting and player.horizontal_speed() > player.walk_speed + 0.5 and _cooldown < -0.2
 	_sprint_pose = lerpf(_sprint_pose, 1.0 if sprinting else 0.0, 1.0 - exp(-8.0 * delta))
 
+	# The weapon's own hold (mirrored for a left-hand gun) ...
+	var own_pos := current.view_position + Vector3(-0.04, -0.05, 0.02) * _sprint_pose
+	var own_rot := current.view_rotation_degrees + Vector3(-12.0, 28.0, 10.0) * _sprint_pose
+	# ... plus the motion both hands share.
 	var phase: float = camera.bob_phase
 	var amount: float = camera.bob_amount * bob_scale
-	var bob := Vector3(cos(phase) * 0.012, -absf(sin(phase)) * 0.012, 0.0) * amount
-	var pos := current.view_position + bob
-	pos += Vector3(-_sway.x * 0.15, _sway.y * 0.15, _kick * 0.035)
-	pos += Vector3(-0.04, -0.05, 0.02) * _sprint_pose
+	var pos := Vector3(cos(phase) * 0.012, -absf(sin(phase)) * 0.012, 0.0) * amount
+	pos += Vector3(-_sway.x * 0.15, _sway.y * 0.15, 0.0)
 	pos.y += _air
 	var lowered := maxf(_lowered, clampf(_climb_pose * 2.0, 0.0, 1.0))  # also put away on ladders
 	pos.y -= lowered * 0.35
-	var rot := current.view_rotation_degrees
-	rot += Vector3(rad_to_deg(_sway.y) * 0.8 + _kick * 5.0, rad_to_deg(_sway.x) * 0.8, rad_to_deg(-_sway.x) * 0.5)
-	rot += Vector3(-12.0, 28.0, 10.0) * _sprint_pose
+	var rot := Vector3(rad_to_deg(_sway.y) * 0.8, rad_to_deg(_sway.x) * 0.8, rad_to_deg(-_sway.x) * 0.5)
 	rot.x += _air * 120.0  # muzzle dips with the drop, tips up with the float
 	rot.x -= lowered * 30.0
-	_vm_root.position = pos
-	_vm_root.rotation_degrees = rot
+	_vm_root.position = own_pos + pos + _recoil.position
+	_vm_root.rotation_degrees = own_rot + rot + _recoil.rotation
+	if not _left.is_empty():
+		var r: GunRecoil = _left.recoil
+		r.update(delta)
+		_vm_left.position = Vector3(-own_pos.x, own_pos.y, own_pos.z) + pos + r.position
+		_vm_left.rotation_degrees = Vector3(own_rot.x, -own_rot.y, -own_rot.z) + rot + r.rotation
+
+
+## A spent casing flips out of the gun's right side (`side` -1: the left gun's left side,
+## away from the other gun), up and a little back, spinning, and drops away. Brass for
+## bullets, red hulls for shells; other ammo leaves none.
+func _eject_casing(w: WeaponData, model: Node3D, side: float) -> void:
+	var shell := w.ammo_type == "shells"
+	if not shell and w.ammo_type != "bullets":
+		return
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3(0.012, 0.012, 0.035) if shell else Vector3(0.006, 0.006, 0.016)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.7, 0.12, 0.08) if shell else Color(0.85, 0.65, 0.25)
+	mat.metallic = 0.0 if shell else 0.7
+	mat.roughness = 0.5
+	mesh.material = mat
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.layers = VIEW_LAYER
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_vm_camera.add_child(mi)
+	# The ejection port: a little back from the muzzle along the barrel, on the outer side.
+	var muzzle_local := w.muzzle
+	var port := model.global_transform * Vector3(0.015 * side, muzzle_local.y, muzzle_local.z * 0.35)
+	mi.position = _vm_camera.to_local(port)
+	mi.rotation = Vector3(randf() * TAU, randf() * TAU, 0.0)
+	var v := Vector3(side * randf_range(1.0, 1.6), randf_range(1.0, 1.6), randf_range(0.0, 0.5))
+	_casings.append({"node": mi, "velocity": v, "spin": Vector3(randf_range(-25, 25), randf_range(-25, 25), 0.0),
+		"life": 0.6})
+
+
+func _update_casings(delta: float) -> void:
+	var down := _vm_camera.global_basis.inverse() * Vector3.DOWN
+	var alive: Array[Dictionary] = []
+	for c in _casings:
+		c.life -= delta
+		var node: MeshInstance3D = c.node
+		if c.life <= 0.0:
+			node.queue_free()
+			continue
+		c.velocity += down * 9.8 * delta
+		node.position += (c.velocity as Vector3) * delta
+		node.rotation += (c.spin as Vector3) * delta
+		alive.append(c)
+	_casings = alive
 
 
 ## Ladders: the weapon drops out of sight, then both hands rise to the rungs. Each hand
@@ -530,6 +662,7 @@ func _update_climb(delta: float) -> void:
 	_climb_pose = move_toward(_climb_pose, target, delta / (2.0 * holster_time))
 	var holstered := _climb_pose >= 0.5
 	_vm_root.visible = not holstered
+	_vm_left.visible = not holstered
 	for f in _forearms:
 		f.visible = current != null and not holstered
 	var raise := clampf(_climb_pose * 2.0 - 1.0, 0.0, 1.0)
