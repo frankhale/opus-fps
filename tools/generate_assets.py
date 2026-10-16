@@ -1372,6 +1372,200 @@ def enemy_wolf(b):
 
 
 @asset("enemies")
+def enemy_shadow_cat(b):
+    """Black shadow cat, faces -Y, ~1.4 m tall to its ear tips: a chibi creature with an
+    oversized head, huge fennec ears, glowing red crescent eyes that drip, spiky fur
+    tufts on its head, cheeks and chest, and a bushy tail curling up over its back.
+    It's caught mid-stride, its right forepaw lifted.
+
+    Rigged for animation (rest pose as modeled). Sides are the cat's own: l is +X, r is -X.
+      hips (root, at the rump) > chest > neck > head > ear_<side>_0 > ear_<side>_1
+      chest > leg_f<side>_0 (shoulder to elbow) > leg_f<side>_1 (to wrist) > paw_f<side>
+      hips > leg_b<side>_0 (hip to knee) > leg_b<side>_1 (to hock) > leg_b<side>_2 (to ankle) > paw_b<side>
+      hips > tail_0 (root) > ... > tail_5 (tip)
+    Everything on the head (eyes, tufts) follows `head`; the chest ruff follows `chest`.
+    Joints are skinned half to each neighbouring bone so they bend smoothly."""
+    fur = {"black": 3, "gunmetal": 2}
+    dark = {"black": 3, "gunmetal": 1}
+    inner = {"dsoil": 3, "roof": 1}
+    hc, hr = Vector((0, -0.36, 0.8)), Vector((0.29, 0.26, 0.26))
+
+    def on_head(u, depth=1.0):
+        """Point on the head's surface in direction u from its center."""
+        u = Vector(u).normalized()
+        return hc + Vector((u.x * hr.x, u.y * hr.y, u.z * hr.z)) * depth
+
+    def face(x, z, proud=0.012):
+        """Point on the front of the head at (x, z), standing `proud` off it."""
+        k = 1 - (x / hr.x) ** 2 - ((z - hc.z) / hr.z) ** 2
+        return Vector((x, hc.y - hr.y * math.sqrt(max(k, 0.0)) - proud, z))
+
+    # Layout shared by the skeleton and the mesh.
+    ears = {side: (on_head((s * 0.6, 0.15, 0.75), 0.85), (-14, s * 42, 0)) for side, s in (("l", 1), ("r", -1))}
+    front_legs = {"l": [(0.1, -0.27, 0.44), (0.11, -0.3, 0.26), (0.11, -0.32, 0.08)],
+                  "r": [(-0.1, -0.27, 0.44), (-0.12, -0.4, 0.31), (-0.11, -0.52, 0.18)]}  # lifted, same lengths
+    back_legs = {}
+    for side, s in (("l", 1), ("r", -1)):
+        y = 0.2 if s > 0 else 0.24
+        back_legs[side] = [(s * 0.11, y, 0.48), (s * 0.13, y + 0.06, 0.3), (s * 0.12, y + 0.09, 0.19),
+                           (s * 0.11, y + 0.02, 0.08)]
+    tail = [Vector(p) for p in ((0, 0.32, 0.5), (0, 0.47, 0.58), (0, 0.6, 0.8), (0, 0.58, 1.04),
+                                (0, 0.42, 1.2), (0, 0.24, 1.2), (0, 0.16, 1.12))]
+
+    def paw_toe(ankle):
+        p = Vector(ankle)
+        return Vector((p.x, p.y - 0.11, max(p.z - 0.04, 0.04)))
+
+    # Skeleton (before any geometry: adding the weight layer invalidates vertices).
+    b.bone("hips", (0, 0.3, 0.48), (0, 0.02, 0.46))
+    b.bone("chest", (0, 0.02, 0.46), (0, -0.25, 0.5), "hips")
+    b.bone("neck", (0, -0.25, 0.5), (0, -0.3, 0.62), "chest")
+    b.bone("head", (0, -0.3, 0.62), (0, -0.36, 1.06), "neck")
+    for side, (base, rot) in ears.items():
+        mid, tip = M(base, rot) @ Vector((0, 0, 0.24)), M(base, rot) @ Vector((0, 0, 0.56))
+        b.bone(f"ear_{side}_0", base, mid, "head")
+        b.bone(f"ear_{side}_1", mid, tip, f"ear_{side}_0")
+    for side, pts in front_legs.items():
+        b.bone(f"leg_f{side}_0", pts[0], pts[1], "chest")
+        b.bone(f"leg_f{side}_1", pts[1], pts[2], f"leg_f{side}_0")
+        b.bone(f"paw_f{side}", pts[2], paw_toe(pts[2]), f"leg_f{side}_1")
+    for side, pts in back_legs.items():
+        b.bone(f"leg_b{side}_0", pts[0], pts[1], "hips")
+        b.bone(f"leg_b{side}_1", pts[1], pts[2], f"leg_b{side}_0")
+        b.bone(f"leg_b{side}_2", pts[2], pts[3], f"leg_b{side}_1")
+        b.bone(f"paw_b{side}", pts[3], paw_toe(pts[3]), f"leg_b{side}_2")
+    for k in range(len(tail) - 1):
+        b.bone(f"tail_{k}", tail[k], tail[k + 1], "hips" if k == 0 else f"tail_{k - 1}")
+
+    def spike(p, d, length, width, color=fur):
+        """A tuft of fur: a four-sided cone from p, `length` along d."""
+        p, d = Vector(p), Vector(d).normalized()
+        return b.limb(p, p + d * length, width, 0, 4, color)
+
+    def chain(rings, bones):
+        """Skin a tube's rings along a bone chain: rings[i] sits at the joint between
+        bones[i - 1] and bones[i], so it bends half with each (the ends follow one bone)."""
+        for i, ring in enumerate(rings):
+            if i == 0 or i >= len(bones):
+                b.weigh(ring, {bones[min(i, len(bones)) - 1 if i else 0]: 1.0})
+            else:
+                b.weigh(ring, {bones[i - 1]: 0.5, bones[i]: 0.5})
+
+    # Head: a wide ellipsoid that the eyes, ears and tufts are placed on.
+    head = list(b.ico(1.0, 2, loc=hc, scale=hr, color=fur, jit=0.008))
+    head += b.ico(0.08, 1, loc=(0, -0.59, 0.7), scale=(1.15, 0.8, 0.75), color={"gunmetal": 2, "black": 1})
+    head += b.box((0.045, 0.02, 0.028), (0, -0.655, 0.725), color="black")
+
+    # Crescent eyes, open toward +X like the reference, conforming to the head, each
+    # dripping glowing red from its lower horn.
+    for ex in (-0.125, 0.125):
+        ez, rad = 0.82, 0.085
+        n = 13
+        pts, radii = [], []
+        for i in range(n + 1):
+            t = i / n
+            a = math.radians(55 + 250 * t)
+            pts.append(face(ex + rad * math.cos(a), ez + rad * math.sin(a)))
+            radii.append(0.027 * math.sin(math.pi * t) ** 0.6 if 0 < i < n else (0.004 if i == 0 else 0.0))
+        head += [v for r in b.tube(pts, radii, seg=5, color="red", glow=True) for v in r]
+        for a, drop in ((255, 0.08), (290, 0.13)):
+            x0 = ex + rad * math.cos(math.radians(a))
+            z0 = ez + rad * math.sin(math.radians(a))
+            run = [face(x0, z0 - drop * t, 0.008) for t in (0.0, 0.5, 1.0)]
+            head += [v for r in b.tube(run, [0.011, 0.008, 0.0], seg=4, color="red", glow=True) for v in r]
+            head += b.ico(0.016, 1, loc=run[-1] + Vector((0, 0, -0.008)), scale=(1, 1, 1.3), color="red", glow=True)
+
+    # Huge ears, splayed out and tipped back, with a reddish inner ear and a tuft. Each
+    # bends at a third of its height: below that it follows ear_0, above it blends to ear_1.
+    for side, (base, rot) in ears.items():
+        s = 1 if side == "l" else -1
+        ear = []
+        with b.at(loc=base, rot=rot):
+            # A broad leaf: widest a third of the way up, flattened front to back.
+            ear += b.lathe([(0.15, 0.0), (0.19, 0.16), (0.12, 0.36), (0.0, 0.54)], seg=6,
+                           scale=(1, 0.32, 1), color=dark)
+            ear += b.lathe([(0.1, 0.04), (0.13, 0.17), (0.08, 0.34), (0.0, 0.47)], seg=5,
+                           loc=(0, -0.04, 0), scale=(1, 0.22, 1), color=inner)
+            ear += spike((0, 0, 0.5), (0, 0.2, 1), 0.07, 0.025, "black")
+            head += spike((s * -0.08, -0.02, 0.08), (s * -1, -0.6, 0.6), 0.13, 0.04)
+        to_local = M(base, rot).inverted()
+        for v in ear:
+            if v.is_valid:
+                w = smoothstep(0.16, 0.32, (to_local @ v.co).z)
+                b.weigh([v], {f"ear_{side}_0": 1 - w, f"ear_{side}_1": w})
+
+    # Spiky fur on the head: bangs falling over the brow, a crown and tufts at the cheeks.
+    for k in range(7):
+        x = -0.6 + 1.2 * k / 6
+        u = Vector((x, -0.55, 0.75))
+        d = Vector((x * 0.6, -0.8, -0.25 + b.rng.uniform(-0.1, 0.1)))
+        head += spike(on_head(u, 0.92), d, b.rng.uniform(0.13, 0.19), 0.05)
+    for k in range(6):
+        a = math.radians(-60 + 120 * k / 5)
+        u = Vector((math.sin(a) * 0.7, 0.25, 0.9))
+        head += spike(on_head(u, 0.9), Vector((math.sin(a), 0.5, 0.9)), b.rng.uniform(0.12, 0.17), 0.05)
+    for s in (-1, 1):
+        for z in (-0.35, -0.6):
+            head += spike(on_head((s * 0.95, -0.25, z), 0.9), (s, -0.25, z * 0.8), b.rng.uniform(0.11, 0.15), 0.045)
+    b.weigh([v for v in head if v.is_valid], {"head": 1.0})
+
+    # Neck and a lean body, deep at the chest and tucked at the waist.
+    rings = b.tube([(0, -0.3, 0.6), (0, -0.27, 0.5)], [0.15, 0.16], seg=8, color=fur)
+    b.weigh(rings[0], {"neck": 0.5, "head": 0.5})
+    b.weigh(rings[1], {"neck": 0.5, "chest": 0.5})
+    spine = [(0, -0.36, 0.46), (0, -0.3, 0.46), (0, -0.17, 0.46), (0, 0.0, 0.45), (0, 0.15, 0.46),
+             (0, 0.27, 0.47), (0, 0.34, 0.48)]
+    rings = b.tube(spine, [0.06, 0.14, 0.17, 0.15, 0.15, 0.14, 0.0], seg=8, color=fur)
+    b.jitter([v for r in rings[1:-1] for v in r], 0.008)
+    for ring, w in zip(rings, ({"chest": 1.0},) * 3 + ({"chest": 0.5, "hips": 0.5},) + ({"hips": 1.0},) * 3):
+        b.weigh(ring, w)
+
+    # A ruff of fur round the chest, spikes pointing down and out.
+    ruff = []
+    for k in range(9):
+        a = math.radians(-165 + 150 * k / 8)
+        radial = Vector((math.cos(a), math.sin(a), 0))
+        p = Vector((0, -0.34, 0.54)) + radial * 0.15
+        ruff += spike(p, radial * 0.7 + Vector((0, -0.25, -0.75)), b.rng.uniform(0.13, 0.18), 0.05)
+    for s in (-1, 1):
+        ruff += spike((s * 0.11, -0.18, 0.58), (s * 0.4, 0.6, 0.6), 0.1, 0.04)
+    b.weigh([v for v in ruff if v.is_valid], {"chest": 1.0})
+
+    # Legs: one tube from shoulder or hip to the ankle, ending in a soft round paw.
+    def leg(pts, radii, bones, paw):
+        chain(b.tube(pts, radii, seg=6, color=fur), bones + [paw])
+        p = Vector(pts[-1])
+        verts = b.ico(0.075, 1, loc=(p.x, p.y - 0.03, max(p.z - 0.04, 0.04)), scale=(1, 1.3, 0.6), color=fur)
+        b.weigh(verts, {paw: 1.0})
+
+    leg(front_legs["l"], [0.09, 0.068, 0.058], ["leg_fl_0", "leg_fl_1"], "paw_fl")
+    leg(front_legs["r"], [0.09, 0.068, 0.058], ["leg_fr_0", "leg_fr_1"], "paw_fr")
+    for side in ("r", "l"):
+        leg(back_legs[side], [0.11, 0.085, 0.06, 0.058], [f"leg_b{side}_0", f"leg_b{side}_1", f"leg_b{side}_2"],
+            f"paw_b{side}")
+
+    # The tail: a bushy plume rising from the rump and curling forward over the back,
+    # bristling with tufts that sweep toward its tip, which follow the joint they grow from.
+    bones = [f"tail_{k}" for k in range(len(tail) - 1)]
+    radii = [0.06, 0.09, 0.14, 0.16, 0.15, 0.1, 0.0]
+    rings = b.tube(tail, radii, seg=7, color=fur)
+    b.jitter([v for r in rings[1:-1] for v in r], 0.02)
+    chain(rings, bones)
+    for i in range(1, len(tail) - 1):
+        t = (tail[i + 1] - tail[i - 1]).normalized()
+        side = Vector((1, 0, 0))
+        up = t.cross(side).normalized()
+        for k in range(6):
+            a = 2 * math.pi * (k + 0.5 * (i % 2)) / 6
+            radial = side * math.cos(a) + up * math.sin(a)
+            tuft = spike(tail[i] + radial * radii[i] * 0.7, radial * 0.75 + t * 0.8,
+                         b.rng.uniform(0.12, 0.2) * (0.6 + radii[i] * 3), 0.055)
+            b.weigh([v for v in tuft if v.is_valid], {bones[i - 1]: 0.5, bones[i]: 0.5})
+    tuft = spike(tail[-2], (tail[-1] - tail[-2]) + Vector((0, -0.05, -0.05)), 0.22, 0.06)
+    b.weigh([v for v in tuft if v.is_valid], {bones[-1]: 1.0})
+
+
+@asset("enemies")
 def enemy_turret(b):
     b.lathe([(0.5, 0), (0.45, 0.18), (0.28, 0.28), (0.25, 0.62)], seg=8, color="gunmetal")
     b.cyl(0.46, 0.46, 0.06, seg=8, loc=(0, 0, 0.12), color="yellow")

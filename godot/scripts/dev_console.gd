@@ -38,6 +38,7 @@ func _ready() -> void:
 	register("map", _cmd_map, "Hide or show the map (M still switches corner and large). map 1 / map 0 to set it")
 	register("screenshot", _cmd_screenshot, "Close the console and save a screenshot to ~/Pictures/<game name>/")
 	register("quit", func(_args): get_tree().quit(), "Quit the game")
+	register("cat", _cmd_cat, "Send the shadow cat (on the island) off now: cat walk / cat trot / cat run")
 	register("scene", _cmd_scene, "Switch scene: scene world / scene gallery / scene island. No name: show the current one")
 	_print("[color=#8f8]Opus FPS console[/color] - type [b]help[/b] for commands")
 
@@ -277,3 +278,21 @@ func _cmd_screenshot(_args: PackedStringArray) -> void:
 	await RenderingServer.frame_post_draw
 	var path := _main().screenshot()
 	_print("Saved [b]%s[/b]" % _escape(path) if path else "[color=#f88]Couldn't save the screenshot[/color]")
+
+
+## Makes the shadow cat set off at once at the gait asked for, to see it.
+func _cmd_cat(args: PackedStringArray) -> void:
+	var gaits := ["walk", "trot", "run"]
+	var gait := gaits.find(args[0].to_lower()) if not args.is_empty() else -1
+	if gait < 0:
+		_print("[color=#f88]Say how: cat walk / cat trot / cat run[/color]")
+		return
+	var cats := get_tree().get_nodes_in_group("shadow_cats")
+	if cats.is_empty():
+		_print("[color=#f88]No shadow cat here.[/color] It's on the island: scene island")
+		return
+	for cat: ShadowCat in cats:
+		if not cat.set_out(gait):
+			_print("[color=#f88]The cat has nowhere to %s from where it is[/color]" % gaits[gait])
+			return
+	_print("The shadow cat sets off at a [b]%s[/b]" % gaits[gait])

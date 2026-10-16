@@ -14,9 +14,9 @@ extends Node3D
 ## at height 0 that reaches the fog on every side, with surf rolling in to shore.
 ## You can wade out until the water is about 1 m deep, where invisible walls follow the
 ## coast round. Rocks sit along the shore (the surf foams round them), with a few trees
-## and bushes on the grass. Everything is built when the node enters the tree (also in
-## the editor), so the scene file stays tiny. The player starts on the south beach,
-## looking out to sea.
+## and bushes on the grass, and the shadow cat wanders the island. Everything is built
+## when the node enters the tree (also in the editor), so the scene file stays tiny. The
+## player starts on the south beach, looking out to sea.
 
 const SEED := 2024
 ## Mean distance from the middle to the waterline, and how far it wanders either way.
@@ -70,6 +70,11 @@ const PROPS := [
 ]
 ## Nothing is placed this close to where the player starts.
 const SPAWN_CLEAR := 7.0
+## The shadow cat starts this far round the coast from the player's start (radians) and
+## this far inland, and keeps at least CAT_SHORE meters from the water as it wanders.
+const CAT_ANGLE := -0.25
+const CAT_INLAND := 10.0
+const CAT_SHORE := 3.0
 
 var _coast := []  # [harmonic, amplitude, phase] for the coastline's wander
 var _noise: FastNoiseLite
@@ -90,6 +95,7 @@ func build() -> void:
 	_build_sea()
 	_build_walls()
 	_scatter_props()
+	_place_cat()
 	if not Engine.is_editor_hint() and ResourceLoader.exists(SURF_SOUND):
 		var surf := AudioStreamPlayer.new()
 		surf.name = "Surf"
@@ -290,6 +296,20 @@ func _scatter_props() -> void:
 			inst.scale = Vector3.ONE * s
 			props.add_child(inst)
 			placed += 1
+
+
+## The shadow cat (scripts/enemies/shadow_cat.gd), wandering the island on dry land.
+func _place_cat() -> void:
+	var angle := PI * 0.5 + CAT_ANGLE
+	var r := coast_radius(angle) - CAT_INLAND
+	var x := cos(angle) * r
+	var z := sin(angle) * r
+	var cat := ShadowCat.new()
+	cat.name = "ShadowCat"
+	cat.position = Vector3(x, height(x, z) + 0.05, z)
+	cat.wander_radius = COAST_RADIUS
+	cat.can_stand = func(p: Vector3) -> bool: return inland(p.x, p.z) > CAT_SHORE
+	add_child(cat)
 
 
 ## Puts the player on the south beach looking out to sea (slightly along the shore),
