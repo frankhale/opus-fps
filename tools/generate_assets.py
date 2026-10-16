@@ -1329,6 +1329,268 @@ def enemy_floating_eye(b):
             b.weigh(ring, {f"tentacle_{k}_{j - 1}": 0.5, f"tentacle_{k}_{j}": 0.5} if joint else {f"tentacle_{k}_{j}": 1.0})
 
 
+# How far the arcane eye's lids are turned open at rest (degrees); the game turns them
+# back by this much to shut them (scripts/enemies/arcane_eye.gd, LID_OPEN).
+LID_OPEN = 50
+
+
+@asset("enemies")
+def enemy_arcane_eye(b):
+    """An ornate floating eye; origin at the eyeball's center, looking -Y (offset it above
+    the ground in game). A pale, veined eyeball with a glowing violet iris and a black slit
+    pupil, set in a thorny brass frame with crescent horns, a crowned gem on top and violet
+    gems round the rim. Chains hang from the frame ending in violet crystals, and tattered
+    violet cloth hangs at each side.
+
+    Rigged so every hanging can swing and bend: body (the eye and frame) carries each
+    chain as pendant_<k>_0 > pendant_<k>_1 > pendant_<k>_2 (top to bottom, the crystal on
+    the last; k = 0 to 4 from left to right), and each cloth strip as
+    cloth_<side>_<k>_0 > _1 > _2 (top to bottom; side l at -X and r at +X as seen from the
+    front, k = 0 to 4 from the inside out). The links of a chain each follow one bone; the
+    cloth bends smoothly between its bones. Its eyelids, lid_upper and lid_lower, are
+    hinged at the eye's center about X; at rest they're open (folded back above and below
+    the iris), and turning them shut by LID_OPEN degrees each (upper down, lower up)
+    closes them across the middle of the eye."""
+    brass = {"brass": 3, "olive": 1}
+    tarnish = {"olive": 2, "brass": 1, "dbark": 1}
+    R = 0.38           # eyeball radius
+    RING = 0.45        # frame radius, in the XZ plane
+
+    def on_ring(deg, r=RING, y=0.0):
+        a = math.radians(deg)
+        return Vector((math.cos(a) * r, y, math.sin(a) * r))
+
+    # Pendants: (frame angle in degrees, chain length, crystal size), left to right.
+    pendants = [(186, 0.34, 0.8), (238, 0.26, 0.75), (270, 0.36, 1.25), (302, 0.26, 0.75), (354, 0.34, 0.8)]
+    tops = []
+    for deg, length, _ in pendants:
+        top = on_ring(deg, RING + 0.05, 0.0)
+        if deg in (186, 354):
+            top = Vector((top.x * 1.22, 0.0, -0.06))  # hung from the side horns' roots
+        tops.append(top)
+
+    # Cloth strips per side, inside out: (x, y, top, length, width). Laid out here, with
+    # their own random numbers, so the bones can be made before the geometry.
+    crng = random.Random(77)
+    strips = {}
+    for side, s in (("l", -1), ("r", 1)):
+        strips[side] = [(s * (0.4 + k * 0.055 + crng.uniform(-0.01, 0.01)), 0.08 + k * 0.004, -0.08 - k * 0.03,
+                         crng.uniform(0.45, 0.78), crng.uniform(0.05, 0.07)) for k in range(5)]
+    SEGS = 3  # bones per chain and per strip
+
+    # Skeleton (before any geometry: adding the weight layer invalidates vertices).
+    b.bone("body", (0, 0, 0), (0, 0, 0.3))
+    b.bone("lid_upper", (0, 0, 0), (0, -0.25, 0.0), "body")
+    b.bone("lid_lower", (0, 0, 0), (0, -0.25, 0.0), "body")
+    for k, ((deg, length, size), top) in enumerate(zip(pendants, tops)):
+        tip = top + Vector((0, 0, -length - 0.02))
+        for j in range(SEGS):
+            b.bone(f"pendant_{k}_{j}", top.lerp(tip, j / SEGS), top.lerp(tip, (j + 1) / SEGS),
+                   "body" if j == 0 else f"pendant_{k}_{j - 1}")
+    for side in strips:
+        for k, (x, y, top_z, length, width) in enumerate(strips[side]):
+            for j in range(SEGS):
+                b.bone(f"cloth_{side}_{k}_{j}", (x, y, top_z - length * j / SEGS), (x, y, top_z - length * (j + 1) / SEGS),
+                       "body" if j == 0 else f"cloth_{side}_{k}_{j - 1}")
+
+    def gem(loc, size, rot=(0, 0, 0), stretch=1.6):
+        """A violet crystal: a six-sided bipyramid along Z, glowing."""
+        return b.lathe([(0.0, -size * stretch), (size, 0.0), (0.0, size * stretch)], seg=6,
+                       loc=loc, rot=rot, color="purple", glow=True)
+
+    def thorn(p, d, length, width, color=tarnish):
+        p, d = Vector(p), Vector(d).normalized()
+        return b.limb(p, p + d * length, width, 0, 4, color)
+
+    # The eyeball, pale with a flush of pink, and red veins creeping in from the back.
+    b.sphere(R, 14, 10, color={"bone": 4, "flesh": 1, "white": 1})
+    for k in range(9):
+        a = 2 * math.pi * k / 9 + b.rng.uniform(-0.2, 0.2)
+        pts = []
+        for j in range(5):
+            polar = math.radians(78 - j * 9)  # from the side of the eye in toward the iris
+            twist = a + b.rng.uniform(-0.12, 0.12) * j
+            d = Vector((math.sin(polar) * math.cos(twist), -math.cos(polar), math.sin(polar) * math.sin(twist)))
+            pts.append(d * (R + 0.003))
+        b.tube(pts, [0.008, 0.007, 0.006, 0.004, 0.0], seg=3, color="red")
+
+    # The iris: a glowing violet dome on the front of the eye with a dark rim, a black
+    # slit pupil and a white glint.
+    Rf = R + 0.004
+    iris = math.radians(39)
+    with b.at(rot=(90, 0, 0)):  # lathe's +Z now points out of the eye's front (-Y)
+        b.lathe([(math.sin(iris + 0.05) * Rf, math.cos(iris + 0.05) * Rf), (math.sin(iris) * Rf, math.cos(iris) * Rf)],
+                seg=16, color="black")
+        b.lathe([(math.sin(iris) * Rf, math.cos(iris) * Rf), (math.sin(iris * 0.66) * (Rf + 0.004), math.cos(iris * 0.66) * (Rf + 0.004)),
+                 (math.sin(iris * 0.33) * (Rf + 0.006), math.cos(iris * 0.33) * (Rf + 0.006)), (0.0, Rf + 0.007)],
+                seg=16, color="purple", glow=True)
+    front = lambda x, z, lift: -(math.sqrt(max(Rf * Rf - x * x - z * z, 0.0)) + lift)
+    slit = [(0, front(0, 0.16, 0.022), 0.16), (-0.04, front(0.04, 0, 0.022), 0), (0, front(0, -0.16, 0.022), -0.16),
+            (0.04, front(0.04, 0, 0.022), 0), (0, front(0, 0, 0.026), 0)]
+    b.poly(slit, [(0, 1, 4), (1, 2, 4), (2, 3, 4), (3, 0, 4)], color="black")
+    b.ico(0.028, 1, loc=(0.085, front(0.085, 0.1, 0.012), 0.1), scale=(1, 0.4, 1), color="white", glow=True)
+
+    # Eyelids: a curved shell above and below, hugging the eyeball just clear of the iris
+    # and pupil, fleshy with a dark red rim along the edge. Each is modeled closed (its
+    # edge across the middle of the eye) and then turned open about X, so the rest pose
+    # is open; the game turns them back by LID_OPEN to blink.
+    def eyelid(upper):
+        r_out, r_in = R + 0.058, R + 0.042
+        sign = 1 if upper else -1
+        span = math.radians(84)
+        alphas = [-span + 2 * span * i / 10 for i in range(11)]
+        # Reaching 50 degrees up (or down) the eye: shut, that covers the iris (39 degrees)
+        # and pupil; open, they tuck in at the top and bottom, under the cage, instead of
+        # wrapping over the back.
+        betas = [math.radians(sign * d) for d in (0, 10, 20, 30, 40, 50)]
+
+        def pt(r, a, be):
+            return (r * math.cos(be) * math.sin(a), -r * math.cos(be) * math.cos(a), r * math.sin(be))
+        na, nb = len(alphas), len(betas)
+        coords = [pt(r_out, a, be) for be in betas for a in alphas] + [pt(r_in, a, be) for be in betas for a in alphas]
+        o = lambda j, i: j * na + i
+        n = lambda j, i: na * nb + j * na + i
+        faces = []
+        for j in range(nb - 1):
+            for i in range(na - 1):
+                faces.append((o(j, i), o(j, i + 1), o(j + 1, i + 1), o(j + 1, i)))
+                faces.append((n(j, i), n(j + 1, i), n(j + 1, i + 1), n(j, i + 1)))
+        for i in range(na - 1):  # the edge across the eye, and the far edge
+            faces.append((o(0, i), n(0, i), n(0, i + 1), o(0, i + 1)))
+            faces.append((o(nb - 1, i), o(nb - 1, i + 1), n(nb - 1, i + 1), n(nb - 1, i)))
+        for j in range(nb - 1):  # the two ends
+            faces.append((o(j, 0), o(j + 1, 0), n(j + 1, 0), n(j, 0)))
+            faces.append((o(j, na - 1), n(j, na - 1), n(j + 1, na - 1), o(j + 1, na - 1)))
+        with b.at(rot=(-sign * LID_OPEN, 0, 0)):
+            verts = list(b.poly(coords, faces, color={"flesh": 3, "bone": 1}))
+            rim = [Vector(pt(r_out - 0.004, a, betas[0] + sign * 0.03)) for a in alphas]
+            for ring in b.tube(rim, [0.012] * (len(rim) - 1) + [0.0], seg=4, color="roof"):
+                verts += ring
+        b.weigh([v for v in verts if v.is_valid], {"lid_upper" if upper else "lid_lower": 1.0})
+
+    eyelid(True)
+    eyelid(False)
+
+    # The frame: a heavy brass rim round the eye, a thinner band tilted behind it, and
+    # thorns all round.
+    b.ring(RING, 0.075, seg=16, width=0.06, rot=(90, 0, 0), color=brass)
+    b.ring(RING - 0.05, 0.035, seg=16, width=0.07, loc=(0, -0.04, 0), rot=(90, 0, 0), color=tarnish)
+    b.ring(RING + 0.03, 0.035, seg=16, width=0.04, loc=(0, 0.07, 0), rot=(104, 0, 0), color=tarnish)
+    for deg in range(0, 360, 24):
+        if 60 < deg < 120 or deg in (264, 288):  # the crown, and the center pendant's hook
+            continue
+        out = on_ring(deg, 1.0)
+        thorn(on_ring(deg, RING + 0.03), out + Vector((0, -0.35, 0)) + Vector((0, 0, 0.25)) * (1 if out.z > -0.3 else -0.2),
+              b.rng.uniform(0.07, 0.13), 0.022)
+
+    # Crescent horns sweeping up and in from the upper corners, and smaller horns at the
+    # sides, each with a barb.
+    for s in (-1, 1):
+        b.tube([(s * 0.3, 0.02, 0.34), (s * 0.46, 0.03, 0.52), (s * 0.47, 0.04, 0.72), (s * 0.36, 0.05, 0.86), (s * 0.24, 0.05, 0.9)],
+               [0.055, 0.045, 0.032, 0.018, 0.0], seg=5, color=brass)
+        thorn((s * 0.46, 0.03, 0.55), (-s * 0.6, -0.2, 0.5), 0.1, 0.02, brass)
+        b.tube([(s * 0.47, 0.0, 0.02), (s * 0.6, 0.0, 0.12), (s * 0.66, 0.01, 0.3), (s * 0.62, 0.02, 0.42)],
+               [0.045, 0.034, 0.018, 0.0], seg=5, color=brass)
+        thorn((s * 0.6, 0.0, 0.14), (s, -0.1, -0.5), 0.09, 0.02, brass)
+
+    # The crown: a pointed brass shield above the eye holding a large gem, flanked by spikes.
+    b.cyl(0.12, 0.0, 0.42, seg=4, loc=(0, 0.0, 0.66), rot=(0, 0, 45), scale=(1.0, 0.45, 1.0), color=brass)
+    b.cyl(0.13, 0.08, 0.08, seg=6, loc=(0, 0.0, 0.47), color=tarnish)
+    gem((0, -0.07, 0.6), 0.055, rot=(0, 0, 0), stretch=1.5)
+    for s in (-1, 1):
+        thorn((s * 0.1, 0.0, 0.5), (s * 0.7, -0.1, 1.0), 0.16, 0.025, brass)
+
+    # Gems set into the rim at the sides and the bottom.
+    for deg in (160, 20, 214, 326):
+        p = on_ring(deg, RING, -0.05)
+        gem(p, 0.04, rot=(0, -deg + 90, 0), stretch=1.3)
+
+    # The back: a brass cage over the eyeball. A strap runs from the crown over the back to
+    # the bottom of the rim and another across from side to side, both studded with thorns,
+    # and where they cross sits a medallion of rings and spikes round a violet gem. Two
+    # violet sashes are draped across the back from the upper corners.
+    CAGE = R + 0.075  # clear of the eyelids folded back above and below
+
+    def arc(a, m, c, n, r):
+        """Points on a sphere of radius r, curving from direction a through m to c."""
+        a, m, c = Vector(a).normalized(), Vector(m).normalized(), Vector(c).normalized()
+        return [(a.lerp(m, t).lerp(m.lerp(c, t), t)).normalized() * r for t in (i / n for i in range(n + 1))]
+
+    for path in (arc((0, 0.12, 1), (0, 1, 0), (0, 0.12, -1), 12, CAGE),
+                 arc((-1, 0.12, 0), (0, 1, 0), (1, 0.12, 0), 12, CAGE)):
+        b.tube(path, [0.03] * len(path), seg=4, color=brass)
+        for i in range(1, len(path) - 1, 2):
+            p = path[i]
+            side = (path[i + 1] - path[i - 1]).cross(p).normalized()
+            for s in (-1, 1):
+                if abs(p.y) < CAGE * 0.9 or i % 4 == 1:  # leave the medallion clear
+                    thorn(p + side * s * 0.02, side * s + p.normalized() * 0.6, 0.06, 0.016)
+    with b.at(loc=(0, CAGE + 0.01, 0), rot=(90, 0, 0)):  # the medallion faces out of the back (+Y)
+        b.cyl(0.15, 0.13, 0.03, seg=12, color=tarnish)
+        b.ring(0.13, 0.03, seg=12, width=0.03, loc=(0, 0, -0.02), color=brass)
+        b.ring(0.085, 0.025, seg=10, width=0.03, loc=(0, 0, -0.035), color=brass)
+        for k in range(8):
+            a = 2 * math.pi * (k + 0.5) / 8
+            d = Vector((math.cos(a), math.sin(a), 0))
+            thorn(d * 0.14 + Vector((0, 0, -0.02)), d + Vector((0, 0, -0.25)), 0.07, 0.018, brass)
+    gem((0, CAGE + 0.055, 0), 0.045, rot=(90, 0, 0), stretch=1.3)
+    for s in (-1, 1):
+        sash = arc((s * 0.8, 0.25, 0.6), (s * 0.35, 1, 0.1), (s * 0.05, 0.4, -0.95), 10, CAGE - 0.012)
+        for p0, p1 in zip(sash, sash[1:]):
+            out = p0.normalized()
+            along = (p1 - p0).normalized()
+            side = along.cross(out).normalized() * 0.04
+            q = [p0 - side, p0 + side, p1 + side, p1 - side]
+            coords = [v + out * 0.008 for v in q] + [v - out * 0.004 for v in q]
+            b.poly(coords, [(0, 1, 2, 3), (7, 6, 5, 4), (0, 4, 5, 1), (1, 5, 6, 2), (2, 6, 7, 3), (3, 7, 4, 0)],
+                   color={"purple": 4, "black": 1})
+
+    # Chains: links hanging from the frame, each ending in a brass cap and a crystal.
+    for k, ((deg, length, size), top) in enumerate(zip(pendants, tops)):
+        hook = b.cyl(0.03, 0.03, 0.035, seg=6, loc=top, rot=(0, 90, 0), color=tarnish)
+        b.weigh([v for v in hook if v.is_valid], {"body": 1.0})
+        n = max(3, round(length / 0.055))
+        for j in range(n):
+            z = top.z - 0.03 - j * (length / n)
+            link = b.box((0.024, 0.01, 0.05), (top.x, top.y, z), rot=(0, 0, 90 * (j % 2)), color=brass)
+            seg = min(int((top.z - z) / (length + 0.02) * SEGS), SEGS - 1)  # each link rides one bone
+            b.weigh([v for v in link if v.is_valid], {f"pendant_{k}_{seg}": 1.0})
+        tip = Vector((top.x, top.y, top.z - length - 0.02))
+        verts = list(b.cyl(0.04 * size, 0.012, 0.05 * size, seg=6, loc=tip + Vector((0, 0, 0.01)), rot=(180, 0, 0), color=brass))
+        verts += gem(tip + Vector((0, 0, -0.07 * size)), 0.045 * size, rot=(0, 0, 30 * k), stretch=1.6)
+        b.weigh([v for v in verts if v.is_valid], {f"pendant_{k}_{SEGS - 1}": 1.0})
+
+    # Tattered cloth at each side: strips of violet hanging from behind the frame, of
+    # uneven lengths, ragged along their edges and torn at the ends. Each is a thin slab
+    # whose outline has a vertex every row, so it bends along its three bones, blending
+    # smoothly from one to the next.
+    for side in strips:
+        for k, (x, y, top_z, length, width) in enumerate(strips[side]):
+            rows = 6
+            left, right = [], []
+            for r in range(rows + 1):
+                z = top_z - length * r / rows
+                left.append((x - width / 2 + (crng.uniform(-0.012, 0.012) if r else 0.0), z))
+                right.append((x + width / 2 + (crng.uniform(-0.012, 0.012) if r else 0.0), z))
+            # A torn end: a jagged point or two below the last row.
+            bottom = [(x + width * 0.2, top_z - length - crng.uniform(0.02, 0.07)),
+                      (x - width * 0.25, top_z - length - crng.uniform(0.0, 0.05))]
+            with b.at(loc=(0, y, 0)):
+                strip = b.slab(left + bottom[::-1] + right[::-1], 0.01, plane="XZ", color={"purple": 6, "black": 1})
+            for v in strip:
+                if not v.is_valid:
+                    continue
+                # u runs 0 to 3 down the strip; each bone weighs most at its middle.
+                u = min(max((top_z - v.co.z) / length * SEGS, 0.0), SEGS)
+                w = {j: max(0.0, 1.0 - abs(u - (j + 0.5))) for j in range(SEGS)}
+                if u < 0.5:
+                    w = {0: 1.0}
+                elif u > SEGS - 0.5:
+                    w = {SEGS - 1: 1.0}
+                total = sum(w.values())
+                b.weigh([v], {f"cloth_{side}_{k}_{j}": wj / total for j, wj in w.items() if wj > 0})
+
+
 @asset("enemies")
 def enemy_golem(b):
     """Moss-covered rock golem, ~2.6 m."""

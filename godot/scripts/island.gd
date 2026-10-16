@@ -14,9 +14,10 @@ extends Node3D
 ## at height 0 that reaches the fog on every side, with surf rolling in to shore.
 ## You can wade out until the water is about 1 m deep, where invisible walls follow the
 ## coast round. Rocks sit along the shore (the surf foams round them), with a few trees
-## and bushes on the grass, and the shadow cat wanders the island. Everything is built
-## when the node enters the tree (also in the editor), so the scene file stays tiny. The
-## player starts on the south beach, looking out to sea.
+## and bushes on the grass. The shadow cat roams the island and the arcane eye floats
+## over it. Everything is built when the node enters the tree (also in the editor, apart
+## from the creatures), so the scene file stays tiny. The player starts on the south
+## beach, looking out to sea.
 
 const SEED := 2024
 ## Mean distance from the middle to the waterline, and how far it wanders either way.
@@ -75,6 +76,10 @@ const SPAWN_CLEAR := 7.0
 const CAT_ANGLE := -0.25
 const CAT_INLAND := 10.0
 const CAT_SHORE := 3.0
+## The arcane eye starts this far round the coast from the player's start (radians) and
+## this far inland, and drifts anywhere over the island.
+const EYE_ANGLE := 0.4
+const EYE_INLAND := 16.0
 
 var _coast := []  # [harmonic, amplitude, phase] for the coastline's wander
 var _noise: FastNoiseLite
@@ -96,6 +101,7 @@ func build() -> void:
 	_build_walls()
 	_scatter_props()
 	_place_cat()
+	_place_eye()
 	if not Engine.is_editor_hint() and ResourceLoader.exists(SURF_SOUND):
 		var surf := AudioStreamPlayer.new()
 		surf.name = "Surf"
@@ -312,6 +318,22 @@ func _place_cat() -> void:
 	cat.wander_radius = COAST_RADIUS
 	cat.can_stand = func(p: Vector3) -> bool: return inland(p.x, p.z) > CAT_SHORE
 	add_child(cat)
+
+
+## The arcane eye (scripts/enemies/arcane_eye.gd), floating about over the island.
+func _place_eye() -> void:
+	if Engine.is_editor_hint():
+		return  # it only runs in the game
+	var angle := PI * 0.5 + EYE_ANGLE
+	var r := coast_radius(angle) - EYE_INLAND
+	var x := cos(angle) * r
+	var z := sin(angle) * r
+	var eye := ArcaneEye.new()
+	eye.name = "ArcaneEye"
+	eye.position = Vector3(x, height(x, z) + eye.hover_height, z)
+	eye.wander_radius = COAST_RADIUS
+	eye.can_hover = func(p: Vector3) -> bool: return inland(p.x, p.z) > 0.0
+	add_child(eye)
 
 
 ## Puts the player on the south beach looking out to sea (slightly along the shore),
