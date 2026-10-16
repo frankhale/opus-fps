@@ -9,8 +9,9 @@ extends Control
 ## and the model gallery. F12 saves a screenshot to ~/Pictures/<project name>/. Cmd+M
 ## hides or shows the minimap.
 
-## Approximate vertical resolution to render at. The PS1 mostly ran at 240 lines;
-## 480 (its high-res mode) keeps the chunky look but with finer pixels.
+## Approximate vertical resolution to render at, in lines (each pixel a whole number of
+## screen pixels). The PS1 mostly ran at 240 lines; 480 (its high-res mode) keeps the
+## chunky look but with finer pixels.
 @export var target_lines := 480
 ## Replaces the world's level when set (the model gallery runs the game this way).
 @export var level_scene: PackedScene
@@ -41,9 +42,20 @@ func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
+## Renders the world at about target_lines and blows it up to fill the screen. The
+## pixel size is a whole number of physical screen pixels, so every pixel comes out the
+## same size, but the stretch in canvas units can be fractional (with the 720-unit
+## canvas on a 1440p screen, 3 screen pixels is 1.5 units), which stretch_shrink, being
+## whole-number only, can't do; so the container is scaled instead.
 func _apply_resolution() -> void:
-	var height := get_viewport().get_visible_rect().size.y
-	container.stretch_shrink = maxi(1, roundi(height / target_lines)) if _ps1_enabled else 1
+	var visible := get_viewport().get_visible_rect().size
+	var screen_per_unit := float(get_window().size.y) / visible.y
+	var pixel := maxf(1.0, roundf(get_window().size.y / float(target_lines))) if _ps1_enabled else 1.0
+	var scale_units := maxf(pixel / screen_per_unit, 1.0)
+	container.stretch_shrink = 1
+	container.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	container.scale = Vector2.ONE * scale_units
+	container.size = (visible / scale_units).ceil()
 	container.material = _post if _ps1_enabled else null
 
 
