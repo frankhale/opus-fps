@@ -79,7 +79,12 @@ func _apply_resolution() -> void:
 
 
 func _input(event: InputEvent) -> void:
-	if event.is_action_pressed("ui_cancel"):
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_S \
+			and event.is_command_or_control_pressed():
+		# Cmd+S (Ctrl+S off macOS): a quick screenshot into Documents.
+		get_viewport().set_input_as_handled()
+		screenshot(OS.get_system_dir(OS.SYSTEM_DIR_DOCUMENTS))
+	elif event.is_action_pressed("ui_cancel"):
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	elif event is InputEventMouseButton and event.pressed and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -113,11 +118,12 @@ func is_minimap() -> bool:
 	return _minimap_shown
 
 
-## Saves what's on screen (HUD included) as a PNG in the user's Pictures folder and
-## returns its path ("" if it couldn't).
-func screenshot() -> String:
+## Saves what's on screen (HUD included) as a PNG in `dir`, by default the game's folder
+## in the user's Pictures, and returns its path ("" if it couldn't).
+func screenshot(dir := "") -> String:
 	var image := get_viewport().get_texture().get_image()
-	var dir := OS.get_system_dir(OS.SYSTEM_DIR_PICTURES).path_join(ProjectSettings.get_setting("application/config/name"))
+	if dir == "":
+		dir = OS.get_system_dir(OS.SYSTEM_DIR_PICTURES).path_join(ProjectSettings.get_setting("application/config/name"))
 	DirAccess.make_dir_recursive_absolute(dir)
 	var stamp := Time.get_datetime_string_from_system().replace("T", "_").replace(":", "-")
 	var path := dir.path_join("screenshot_%s.png" % stamp)
