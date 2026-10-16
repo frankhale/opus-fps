@@ -1793,11 +1793,16 @@ def enemy_shadow_cat(b):
         ruff += spike((s * 0.11, -0.18, 0.58), (s * 0.4, 0.6, 0.6), 0.1, 0.04)
     b.weigh([v for v in ruff if v.is_valid], {"chest": 1.0})
 
-    # Legs: one tube from shoulder or hip to the ankle, ending in a soft round paw.
+    # Legs: one tube from shoulder or hip to the ankle, ending in a soft round paw. The
+    # tube runs on past the ankle to a point inside the paw, following the paw bone, so
+    # the leg stays sunk in the paw however far the paw curls.
     def leg(pts, radii, bones, paw):
-        chain(b.tube(pts, radii, seg=6, color=fur), bones + [paw])
         p = Vector(pts[-1])
-        verts = b.ico(0.075, 1, loc=(p.x, p.y - 0.03, max(p.z - 0.04, 0.04)), scale=(1, 1.3, 0.6), color=fur)
+        center = Vector((p.x, p.y - 0.03, max(p.z - 0.04, 0.04) + 0.008))
+        inside = [p.lerp(center, 0.6), center + Vector((0, -0.01, -0.025))]
+        chain(b.tube(list(pts) + inside, list(radii) + [radii[-1] * 0.85, 0.0], seg=6, color=fur),
+              bones + [paw])
+        verts = b.ico(0.075, 1, loc=center, scale=(1, 1.3, 0.7), color=fur)
         b.weigh(verts, {paw: 1.0})
 
     leg(front_legs["l"], [0.09, 0.068, 0.058], ["leg_fl_0", "leg_fl_1"], "paw_fl")
