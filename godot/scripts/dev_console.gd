@@ -5,7 +5,9 @@ extends CanvasLayer
 ## so typing never moves the player or fires.
 ##
 ## Commands are registered in _ready() with register(); each takes the words typed after
-## its name. Up/Down step through earlier commands.
+## its name. Up/Down step through earlier commands. The game has no other shortcut keys:
+## switching level, the PS1 filter, fullscreen, the map, screenshots and quitting are all
+## commands here. Toggles flip with no argument; 1 / 0 (or on / off) set them.
 
 ## Share of the screen height the console covers.
 @export var height_ratio := 0.25
@@ -31,6 +33,12 @@ func _ready() -> void:
 	register("clear", func(_args): _log.clear(), "Clear the console")
 	register("god", _cmd_god, "Toggle god mode: no damage, every weapon, unlimited ammo. god 1 / god 0 to set it")
 	register("sfx", _cmd_sfx, "Toggle sound effects (all game audio, ambience included). sfx 1 / sfx 0 to set it")
+	register("ps1", _cmd_ps1, "Toggle the PS1 look (low-res render, dithering, 15-bit color). ps1 1 / ps1 0 to set it")
+	register("fullscreen", _cmd_fullscreen, "Toggle fullscreen. fullscreen 1 / fullscreen 0 to set it")
+	register("map", _cmd_map, "Hide or show the map (M still switches corner and large). map 1 / map 0 to set it")
+	register("screenshot", _cmd_screenshot, "Close the console and save a screenshot to ~/Pictures/<game name>/")
+	register("quit", func(_args): get_tree().quit(), "Quit the game")
+	register("scene", _cmd_scene, "Switch scene: scene world / scene gallery / scene island. No name: show the current one")
 	_print("[color=#8f8]Opus FPS console[/color] - type [b]help[/b] for commands")
 
 
@@ -177,6 +185,24 @@ func _player() -> Node:
 	return get_tree().get_first_node_in_group("player")
 
 
+func _main() -> Main:
+	return get_tree().current_scene as Main
+
+
+## A toggle's new state: flipped from `current` with no argument, else set by it.
+func _switch(args: PackedStringArray, current: bool) -> bool:
+	return not current if args.is_empty() else args[0].to_lower() in ["1", "on", "true"]
+
+
+## Reports a toggle in the log and as a HUD message.
+func _report(what: String, on: bool) -> void:
+	var state := "ON" if on else "OFF"
+	_print("%s [b]%s[/b]" % [what, state])
+	var player := _player()
+	if player:
+		player.message.emit("%s %s" % [what, state])
+
+
 # Commands
 
 func _cmd_help(_args: PackedStringArray) -> void:
@@ -191,23 +217,63 @@ func _cmd_god(args: PackedStringArray) -> void:
 	if player == null:
 		_print("[color=#f88]No player[/color]")
 		return
-	if args.is_empty():
-		player.god_mode = not player.god_mode
-	else:
-		player.god_mode = args[0] in ["1", "on", "true"]
-	var state := "ON" if player.god_mode else "OFF"
-	_print("God mode [b]%s[/b]" % state)
-	player.message.emit("God mode " + state)
+	player.god_mode = _switch(args, player.god_mode)
+	_report("God mode", player.god_mode)
 
 
 ## Mutes the Master bus, which every sound plays through. AudioServer is global, so the
 ## setting holds across switching to the gallery and back.
 func _cmd_sfx(args: PackedStringArray) -> void:
 	var bus := AudioServer.get_bus_index("Master")
-	var on := AudioServer.is_bus_mute(bus) if args.is_empty() else args[0] in ["1", "on", "true"]
+	var on := _switch(args, not AudioServer.is_bus_mute(bus))
 	AudioServer.set_bus_mute(bus, not on)
-	var state := "ON" if on else "OFF"
-	_print("Sound effects [b]%s[/b]" % state)
-	var player := _player()
-	if player:
-		player.message.emit("Sound effects " + state)
+	_report("Sound effects", on)
+
+
+## Switches to another level (see Main.LEVELS). The console is part of the game, which
+## reloads, so it closes first; that also unpauses, as pausing belongs to the tree and
+## would carry over.
+func _cmd_scene(args: PackedStringArray) -> void:
+	var names := " / ".join(Main.LEVELS.keys())
+	if args.is_empty():
+		_print("Current scene: [b]%s[/b]. Switch with: scene %s" % [Main.level, names])
+		return
+	var target := args[0].to_lower()
+	if target in ["main", "game", "valley"]:
+		target = "world"
+	if not Main.LEVELS.has(target):
+		_print("[color=#f88]Unknown scene: %s[/color] (try %s)" % [_escape(target), names])
+		return
+	if target == Main.level:
+		_print("Already in [b]%s[/b]" % target)
+		return
+	_print("Loading [b]%s[/b]..." % target)
+	toggle()
+	Main.change_level.call_deferred(get_tree(), target)
+
+
+func _cmd_ps1(args: PackedStringArray) -> void:
+	var on := _switch(args, _main().is_ps1())
+	_main().set_ps1(on)
+	_report("PS1 filter", on)
+
+
+func _cmd_fullscreen(args: PackedStringArray) -> void:
+	var on := _switch(args, _main().is_fullscreen())
+	_main().set_fullscreen(on)
+	_report("Fullscreen", on)
+
+
+func _cmd_map(args: PackedStringArray) -> void:
+	var on := _switch(args, _main().is_minimap())
+	_main().set_minimap(on)
+	_report("Map", on)
+
+
+## Closes the console first and waits for it to slide away, so it isn't in the picture.
+func _cmd_screenshot(_args: PackedStringArray) -> void:
+	toggle()
+	await get_tree().create_timer(slide_time + 0.1).timeout
+	await RenderingServer.frame_post_draw
+	var path := _main().screenshot()
+	_print("Saved [b]%s[/b]" % _escape(path) if path else "[color=#f88]Couldn't save the screenshot[/color]")

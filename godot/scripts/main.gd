@@ -1,44 +1,63 @@
+class_name Main
 extends Control
+## The game around a level: the world (sky, sun, fog and the player, scenes/world.tscn),
+## the HUD and the dev console. When it starts it loads the chosen level (see LEVELS) into
+## the world; change_level() switches to another by reloading the whole game with it.
+##
 ## Hosts the game world in a low-resolution SubViewport that is upscaled with
 ## nearest-neighbour filtering and run through the PS1 dither/color-depth shader.
-## Also owns mouse capture (click to capture, Esc to release), F1 toggles the PS1 filter,
-## F2 shows or hides the controls help (hidden at start),
-## F11, Cmd+Ctrl+F or Alt+Enter toggles fullscreen (the game starts fullscreen) and Cmd+Q
-## quits. macOS takes F11 for Show Desktop by default, so Cmd+Ctrl+F (its own full-screen
-## shortcut) is the one that works there out of the box. Cmd+1 switches between the game
-## and the model gallery. F12 saves a screenshot to ~/Pictures/<project name>/. Cmd+M
-## hides or shows the minimap.
+## Also owns mouse capture (click to capture, Esc to release). The rest of its settings
+## are worked from the dev console (scripts/dev_console.gd): set_ps1(), set_fullscreen()
+## (the game starts fullscreen), set_minimap(), screenshot() and change_level().
 
 ## Approximate vertical resolution to render at, in lines (each pixel a whole number of
 ## screen pixels). The PS1 mostly ran at 240 lines; 480 (its high-res mode) keeps the
 ## chunky look but with finer pixels.
 @export var target_lines := 480
-## Replaces the world's level when set (the model gallery runs the game this way).
-@export var level_scene: PackedScene
+## The levels, by the name the dev console's `scene` command takes. Each is a plain scene
+## holding just that level, so opening it in the editor shows exactly what you play.
+const LEVELS := {
+	"world": "res://scenes/level.tscn",
+	"gallery": "res://scenes/gallery.tscn",
+	"island": "res://scenes/island.tscn",
+}
+const MAIN_SCENE := "res://scenes/main.tscn"
 
-const GAME_SCENE := "res://scenes/main.tscn"
-const GALLERY_SCENE := "res://scenes/gallery.tscn"
+## The level the game loads when it starts: a key of LEVELS. Static, so it holds while
+## change_level() reloads the game.
+static var level := "world"
+## The console's PS1 filter and map settings. Static too, so they hold across levels.
+static var _ps1_enabled := true
+static var _minimap_shown := true
 
 @onready var container: SubViewportContainer = $SubViewportContainer
-@onready var hint: Label = $HUD/Hint
 @onready var hud: CanvasLayer = $HUD
 @onready var minimap: Control = $HUD/Minimap
 
 var _post: Material
-var _ps1_enabled := true
+
+
+## Plays the game in another level (a key of LEVELS).
+static func change_level(tree: SceneTree, level_name: String) -> void:
+	level = level_name
+	tree.change_scene_to_file(MAIN_SCENE)
+
+
+## Puts the level into the world before anything in it is ready, ahead of the player, so
+## it's in place as the game starts.
+func _enter_tree() -> void:
+	var world := $SubViewportContainer/SubViewport/World
+	var node := (load(LEVELS[level]) as PackedScene).instantiate()
+	node.name = "Level"
+	world.add_child(node)
+	world.move_child(node, world.get_node("Player").get_index())
 
 
 func _ready() -> void:
-	if level_scene:
-		var old := $SubViewportContainer/SubViewport/World/Level
-		var level := level_scene.instantiate()
-		old.add_sibling(level)
-		old.get_parent().remove_child(old)
-		old.free()
-		level.name = "Level"
 	_post = container.material
 	get_viewport().size_changed.connect(_apply_resolution)
 	_apply_resolution()
+	minimap.visible = _minimap_shown
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
@@ -64,43 +83,39 @@ func _input(event: InputEvent) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	elif event is InputEventMouseButton and event.pressed and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-	elif event is InputEventKey and event.pressed and not event.echo:
-		match event.keycode:
-			KEY_F1:
-				_ps1_enabled = not _ps1_enabled
-				_apply_resolution()
-			KEY_F2:
-				hint.visible = not hint.visible
-			KEY_F11:
-				_toggle_fullscreen()
-			KEY_ENTER:
-				if event.alt_pressed:
-					_toggle_fullscreen()
-			KEY_F:
-				if event.meta_pressed and event.ctrl_pressed:
-					_toggle_fullscreen()
-			KEY_Q:
-				if event.meta_pressed:
-					get_tree().quit()
-			KEY_F12:
-				_screenshot()
-			KEY_M:
-				if event.meta_pressed:
-					minimap.visible = not minimap.visible
-					get_viewport().set_input_as_handled()  # not also M's map toggle
-			KEY_1:
-				if event.meta_pressed:
-					get_viewport().set_input_as_handled()
-					get_tree().change_scene_to_file(GAME_SCENE if level_scene else GALLERY_SCENE)
 
 
-func _toggle_fullscreen() -> void:
-	var fullscreen := DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
-	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED if fullscreen else DisplayServer.WINDOW_MODE_FULLSCREEN)
+func is_ps1() -> bool:
+	return _ps1_enabled
 
 
-## Saves what's on screen (HUD included) as a PNG in the user's Pictures folder.
-func _screenshot() -> void:
+## Turns the PS1 look (low-res render, dithering and 15-bit color) on or off.
+func set_ps1(on: bool) -> void:
+	_ps1_enabled = on
+	_apply_resolution()
+
+
+func is_fullscreen() -> bool:
+	return DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
+
+
+func set_fullscreen(on: bool) -> void:
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if on else DisplayServer.WINDOW_MODE_WINDOWED)
+
+
+## Hides or shows the map, corner and large alike.
+func set_minimap(on: bool) -> void:
+	_minimap_shown = on
+	minimap.visible = on
+
+
+func is_minimap() -> bool:
+	return _minimap_shown
+
+
+## Saves what's on screen (HUD included) as a PNG in the user's Pictures folder and
+## returns its path ("" if it couldn't).
+func screenshot() -> String:
 	var image := get_viewport().get_texture().get_image()
 	var dir := OS.get_system_dir(OS.SYSTEM_DIR_PICTURES).path_join(ProjectSettings.get_setting("application/config/name"))
 	DirAccess.make_dir_recursive_absolute(dir)
@@ -112,5 +127,6 @@ func _screenshot() -> void:
 		n += 1
 	if image.save_png(path) == OK:
 		hud.show_message("Screenshot saved: " + path.get_file())
-	else:
-		hud.show_message("Couldn't save screenshot to " + dir)
+		return path
+	hud.show_message("Couldn't save screenshot to " + dir)
+	return ""

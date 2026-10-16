@@ -148,6 +148,14 @@ func _ready() -> void:
 	_spawn = global_transform
 
 
+## Moves the player to `xf` (feet position and facing) and makes it where they respawn.
+## For levels that pick their own start (scripts/island.gd).
+func set_spawn(xf: Transform3D) -> void:
+	global_transform = xf
+	_spawn = xf
+	velocity = Vector3.ZERO
+
+
 func take_damage(amount: float, at := Vector3.ZERO, _dir := Vector3.ZERO) -> void:
 	if dead or god_mode:
 		return

@@ -1,6 +1,5 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=9 format=3]
 
-[ext_resource type="PackedScene" path="res://scenes/level.tscn" id="1_level"]
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="2_player"]
 [ext_resource type="AudioStream" path="res://assets/sfx/wind_loop.wav" id="3_wind"]
 [ext_resource type="Shader" path="res://materials/sky.gdshader" id="4_sky"]
@@ -90,8 +89,6 @@ directional_shadow_max_distance = 140.0
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
 size = Vector3(200, 5, 200)
 material = SubResource("FogMaterial_ground")
-
-[node name="Level" parent="." instance=ExtResource("1_level")]
 
 [node name="Player" parent="." instance=ExtResource("2_player")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 30)

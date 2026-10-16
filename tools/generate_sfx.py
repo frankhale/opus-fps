@@ -8,6 +8,7 @@ the world, written straight into the Godot project at godot/assets/sfx/.
   land_hard.wav      heavy landing with debris
   slide_loop.wav     gravel slide, seamless loop
   wind_loop.wav      outdoor ambience, seamless loop
+  surf_loop.wav      waves washing up a beach and drawing back, seamless loop (the island)
   pistol/shotgun/rifle/rocket/plasma.wav   weapon fire
   explosion_small/large.wav, dry_fire.wav, pickup_weapon/ammo.wav, respawn.wav, heal.wav
   eye_alert/charge/fire/hurt/die.wav, player_hurt.wav   enemy and pain sounds
@@ -486,6 +487,25 @@ def generate():
             for i in range(n)]
     write("wind_loop.wav", loopable([a * g for a, g in zip(air, gust)], 1.0), 0.7)
 
+    # Surf: each wave a swell of dark rushing noise as it breaks, a brighter fizz as it
+    # runs up the sand, then a long hiss drawing back; four waves of uneven size per loop.
+    rng = random.Random(31)
+    length = 12.0
+    n = int((length + 1.5) * RATE)
+    roar = lowpass(lowpass(noise(n, rng), 0.06), 0.1)
+    fizz = highpass(lowpass(noise(n, rng), 0.5), 0.15)
+    wash = [0.0] * n
+    hiss = [0.0] * n
+    for start, size in ((0.0, 1.0), (2.9, 0.7), (6.1, 0.9), (9.0, 0.6), (12.0, 1.0)):
+        s0 = int(start * RATE)
+        for i in range(max(0, s0 - int(0.5 * RATE)), min(n, s0 + int(3.5 * RATE))):
+            t = (i - s0) / RATE
+            wash[i] += size * (math.exp(-(t / 0.45) ** 2) if t < 0 else math.exp(-t / 0.9) * (1 - math.exp(-t / 0.05)))
+            hiss[i] += size * max(0.0, math.sin(math.pi * min(max((t - 0.3) / 2.6, 0.0), 1.0))) ** 2
+    bed = [0.12 * r for r in roar]  # the sea further out, never quite silent
+    surf = [r * w + f * h * 0.35 + b for r, w, f, h, b in zip(roar, wash, fizz, hiss, bed)]
+    write("surf_loop.wav", loopable(surf, 1.5), 0.7)
+
     weapon_sounds(random.Random(11))
     creature_sounds(random.Random(13))
     portal_sounds(random.Random(17))
@@ -493,7 +513,7 @@ def generate():
     shield_sounds(random.Random(23))
     spider_sounds(random.Random(29))
 
-    for name in ("slide_loop.wav", "wind_loop.wav", "portal_hum.wav", "golem_hum.wav", "shield_hum.wav"):
+    for name in ("slide_loop.wav", "wind_loop.wav", "surf_loop.wav", "portal_hum.wav", "golem_hum.wav", "shield_hum.wav"):
         path = os.path.join(OUT, name + ".import")
         uid = None
         if os.path.exists(path):

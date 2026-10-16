@@ -1,4 +1,4 @@
-[gd_scene load_steps=17 format=3]
+[gd_scene load_steps=16 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Shader" path="res://materials/ps1_post.gdshader" id="2_post"]
@@ -17,12 +17,6 @@
 shader = ExtResource("2_post")
 shader_parameter/color_levels = 32.0
 shader_parameter/dither_strength = 1.0
-
-[sub_resource type="LabelSettings" id="LabelSettings_hint"]
-font_size = 14
-font_color = Color(1, 1, 1, 0.85)
-outline_size = 4
-outline_color = Color(0, 0, 0, 0.8)
 
 [sub_resource type="LabelSettings" id="LabelSettings_weapon"]
 font_size = 16
@@ -112,16 +106,6 @@ weapons_path = NodePath("../../SubViewportContainer/SubViewport/World/Player/Wea
 hit_sound = ExtResource("7_hit")
 kill_sound = ExtResource("8_kill")
 
-
-[node name="Hint" type="Label" parent="HUD"]
-visible = false
-offset_left = 12.0
-offset_top = 10.0
-offset_right = 640.0
-offset_bottom = 60.0
-text = "WASD move  |  Mouse look  |  Space jump  |  Shift sprint  |  C / Ctrl crouch (slide while sprinting)
-Click fire  |  1-5 / wheel switch weapon  |  M toggle map  |  Cmd+M hide map  |  Esc release mouse  |  F1 toggle PS1 filter  |  F2 hide help  |  F11 / Cmd+Ctrl+F fullscreen  |  Cmd+1 model gallery  |  F12 screenshot  |  ~ console  |  Cmd+Q quit"
-label_settings = SubResource("LabelSettings_hint")
 
 [node name="Minimap" type="Control" parent="HUD"]
 texture_filter = 1
