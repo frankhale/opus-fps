@@ -94,6 +94,9 @@ var _sway := Vector2.ZERO
 var _kick := 0.0
 var _kick_v := 0.0
 var _sprint_pose := 0.0
+## Jump inertia: the weapon trails the body's vertical motion on a spring.
+var _air := 0.0
+var _air_v := 0.0
 var _bloom := 0.0
 var _bloom_timer := 0.0
 ## Climbing hands: 0 = holding the weapon, 0.5 = weapon put away, 1 = hands on the rungs.
@@ -113,6 +116,9 @@ func _ready() -> void:
 	_ui_audio = AudioStreamPlayer.new()
 	add_child(_ui_audio)
 	_build_viewmodel.call_deferred()
+	player.jumped.connect(func(): _air_v -= 0.5)
+	player.vaulted.connect(func(h: float): _air_v -= 0.4 + h * 0.5)
+	player.landed.connect(func(impact: float): _air_v -= minf(impact, 12.0) * 0.06)
 
 
 func _build_viewmodel() -> void:
@@ -484,6 +490,10 @@ func _update_pose(delta: float) -> void:
 	_sway = _sway.lerp(Vector2.ZERO, 1.0 - exp(-7.0 * delta))
 	_kick_v += (-220.0 * _kick - 20.0 * _kick_v) * delta
 	_kick += _kick_v * delta
+	# Rising, the weapon lags low; falling, it floats up; landings slam it down.
+	var air_rest := 0.0 if player.is_on_floor() else clampf(-player.velocity.y * 0.005, -0.03, 0.035)
+	_air_v += (-160.0 * (_air - air_rest) - 14.0 * _air_v) * delta
+	_air += _air_v * delta
 	var sprinting: bool = player.is_sprinting and player.horizontal_speed() > player.walk_speed + 0.5 and _cooldown < -0.2
 	_sprint_pose = lerpf(_sprint_pose, 1.0 if sprinting else 0.0, 1.0 - exp(-8.0 * delta))
 
@@ -493,11 +503,13 @@ func _update_pose(delta: float) -> void:
 	var pos := current.view_position + bob
 	pos += Vector3(-_sway.x * 0.15, _sway.y * 0.15, _kick * 0.035)
 	pos += Vector3(-0.04, -0.05, 0.02) * _sprint_pose
+	pos.y += _air
 	var lowered := maxf(_lowered, clampf(_climb_pose * 2.0, 0.0, 1.0))  # also put away on ladders
 	pos.y -= lowered * 0.35
 	var rot := current.view_rotation_degrees
 	rot += Vector3(rad_to_deg(_sway.y) * 0.8 + _kick * 5.0, rad_to_deg(_sway.x) * 0.8, rad_to_deg(-_sway.x) * 0.5)
 	rot += Vector3(-12.0, 28.0, 10.0) * _sprint_pose
+	rot.x += _air * 120.0  # muzzle dips with the drop, tips up with the float
 	rot.x -= lowered * 30.0
 	_vm_root.position = pos
 	_vm_root.rotation_degrees = rot

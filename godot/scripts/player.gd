@@ -2,7 +2,9 @@ extends CharacterBody3D
 ## First-person movement with AAA-style feel:
 ##  * snappy ground acceleration and braking, momentum-preserving air control
 ##  * sprint, crouch and sprint-slide
-##  * jump with coyote time, input buffering, variable height and snappier falls
+##  * jump with coyote time, input buffering, variable height, a floaty apex and
+##    snappier falls
+##  * vaulting: jumping into a ledge a little above the feet boosts you up onto it
 ##  * automatic step-up over low ledges
 ##  * climbing ladders (Ladder areas)
 ##  * health: damage, healing, death and respawning at the start point
@@ -13,6 +15,8 @@ extends CharacterBody3D
 
 signal jumped
 signal landed(impact_speed: float)
+## Boosted up onto a ledge; `height` is how far up it was, in meters.
+signal vaulted(height: float)
 signal slide_started
 signal slide_ended
 signal health_changed(health: float, max_health: float)
@@ -40,15 +44,24 @@ signal shield_hit(amount: float, from: Vector3)
 @export var air_accel := 10.0
 
 @export_group("Jump")
-@export var jump_velocity := 5.2
+## About 1.7 m of rise with jump held (apex hang included), so 1.27 m walls and 1 m
+## crates clear with room to spare.
+@export var jump_velocity := 5.6
 ## Extra gravity while falling, for a snappier arc.
 @export var fall_gravity_scale := 1.6
+## Near the top of a held jump (vertical speed under apex_speed), gravity eases off
+## to this share for a moment of hang time.
+@export var apex_gravity_scale := 0.55
+@export var apex_speed := 1.4
 ## Share of upward velocity kept when jump is released early (short hops).
 @export var jump_cut := 0.5
 ## Grace period to still jump after walking off a ledge.
 @export var coyote_time := 0.12
 ## A jump pressed this long before landing still fires on touchdown.
 @export var jump_buffer := 0.12
+## Ledges up to this far above the feet can be vaulted onto from the air, by pushing
+## into them; once per jump.
+@export var vault_reach := 0.8
 
 @export_group("Crouch and slide")
 @export var stand_height := 1.8
@@ -115,6 +128,7 @@ var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 var _coyote := 0.0
 var _buffer := 0.0
 var _was_on_floor := true
+var _can_vault := true
 var _slide_dir := Vector3.ZERO
 var _slide_timer := 0.0
 var _spawn: Transform3D
@@ -298,8 +312,12 @@ func _physics_process(delta: float) -> void:
 	if is_on_floor() and is_on_wall() and wish != Vector3.ZERO:
 		# Probe with the intended motion: after hitting the ledge, velocity is ~0.
 		_try_step_up(wish * _move_speed() * delta)
+	elif not is_on_floor() and is_on_wall() and _can_vault and not dead:
+		_try_vault(wish)
 
 	var now_on_floor := is_on_floor()
+	if now_on_floor:
+		_can_vault = true
 	if now_on_floor and not _was_on_floor:
 		landed.emit(maxf(fall_speed, 0.0))
 	_was_on_floor = now_on_floor
@@ -315,6 +333,8 @@ func _apply_gravity(on_floor: bool, delta: float) -> void:
 	if on_floor:
 		return
 	var g_scale := fall_gravity_scale if velocity.y < 0.0 else 1.0
+	if absf(velocity.y) < apex_speed and Input.is_action_pressed("jump"):
+		g_scale = apex_gravity_scale
 	velocity.y -= _gravity * g_scale * delta
 	if Input.is_action_just_released("jump") and velocity.y > 0.0:
 		velocity.y *= jump_cut
@@ -426,6 +446,43 @@ func _end_slide() -> void:
 	is_sliding = false
 	_slide_timer = slide_cooldown
 	slide_ended.emit()
+
+
+## In the air against a wall and pushing into it: if there is a ledge within
+## vault_reach above the feet with room to stand on it, launch up just high enough to
+## clear it, carrying on forward over the top.
+func _try_vault(wish: Vector3) -> void:
+	if wish == Vector3.ZERO or wish.dot(get_wall_normal()) > -0.5:
+		return
+	var fwd := Vector3(wish.x, 0.0, wish.z).normalized()
+	var reach := fwd * (capsule.radius + 0.1)
+	var h := 0.1
+	while h <= vault_reach + 0.001:
+		var up := Vector3(0.0, h, 0.0)
+		if test_move(global_transform, up):
+			return  # no room above
+		var raised := global_transform.translated(up)
+		if not test_move(raised, reach):
+			var hit := KinematicCollision3D.new()
+			if not test_move(raised.translated(reach), -up, hit) or hit.get_normal().y < 0.7:
+				return  # nothing to stand on, or too steep
+			var body := hit.get_collider() as CollisionObject3D
+			if body and body.collision_layer & 4:
+				return  # no climbing on enemies
+			var rise := h - hit.get_travel().length() + 0.08
+			var need := sqrt(2.0 * _gravity * rise)
+			if velocity.y < need:
+				velocity.y = need
+				var hv := Vector3(velocity.x, 0.0, velocity.z)
+				var along := hv.dot(fwd)
+				if along < walk_speed * 0.6:
+					hv += fwd * (walk_speed * 0.6 - along)
+				velocity.x = hv.x
+				velocity.z = hv.z
+				_can_vault = false
+				vaulted.emit(rise)
+			return
+		h += 0.1
 
 
 ## Lifts the body over a low ledge: test that there is room above, that the

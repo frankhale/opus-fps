@@ -1,4 +1,4 @@
-[gd_scene load_steps=20 format=3]
+[gd_scene load_steps=21 format=3]
 
 [ext_resource type="Script" path="res://scripts/player.gd" id="1_player"]
 [ext_resource type="Script" path="res://scripts/camera_effects.gd" id="2_camera"]
@@ -18,6 +18,7 @@
 [ext_resource type="AudioStream" path="res://assets/sfx/pickup_ammo.wav" id="16_pickup_ammo"]
 [ext_resource type="AudioStream" path="res://assets/sfx/player_hurt.wav" id="17_hurt"]
 [ext_resource type="Script" path="res://scripts/shield_veil.gd" id="18_shield"]
+[ext_resource type="Script" path="res://scripts/jump_dust.gd" id="19_dust"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
 resource_local_to_scene = true
@@ -59,3 +60,6 @@ pickup_ammo_sound = ExtResource("16_pickup_ammo")
 
 [node name="ShieldVeil" type="Node3D" parent="."]
 script = ExtResource("18_shield")
+
+[node name="JumpDust" type="Node3D" parent="."]
+script = ExtResource("19_dust")

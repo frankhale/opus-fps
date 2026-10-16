@@ -5,6 +5,8 @@ extends Camera3D
 ##  * head bob with lateral sway and a "foot plant" dip, scaled by speed
 ##  * leaning into strafes and slides
 ##  * FOV kick when sprinting and sliding, and a wide stretch on going through a portal
+##  * jumps: a dip and FOV pop on take-off, the view tipping up while rising and
+##    down while falling, a pull-up on vaulting a ledge
 ##  * spring-damped landing dip and pitch kick, shake on hard landings
 ##  * subtle breathing when standing still
 ## Emits `footstep` on every foot plant so audio stays in sync with the bob.
@@ -18,6 +20,8 @@ signal footstep(intensity: float)
 @export var fov_speed := 7.0
 ## Extra FOV the view snaps to after going through a portal, easing back.
 @export var teleport_fov := 30.0
+## Extra FOV popped on jumping, easing back.
+@export var jump_fov := 4.0
 
 @export_group("Bob")
 ## Height of the dip at each foot plant, in meters (at walk speed).
@@ -44,6 +48,11 @@ signal footstep(intensity: float)
 ## Fall speeds above this (m/s) also shake the camera.
 @export var shake_threshold := 8.0
 
+@export_group("Air")
+## Degrees of pitch per m/s of vertical speed while airborne (up rising, down falling).
+@export var air_pitch := 0.35
+@export var air_pitch_limit := 3.0
+
 @onready var player: CharacterBody3D = get_parent().get_parent()
 
 ## Bob state, read by the weapon viewmodel so it moves in step with the camera.
@@ -54,6 +63,7 @@ var _offset_y := 0.0
 var _offset_v := 0.0
 var _pitch := 0.0
 var _pitch_v := 0.0
+var _air_pitch := 0.0
 var _trauma := 0.0
 var _time := 0.0
 
@@ -62,6 +72,7 @@ func _ready() -> void:
 	fov = base_fov
 	player.landed.connect(_on_landed)
 	player.jumped.connect(_on_jumped)
+	player.vaulted.connect(_on_vaulted)
 	player.teleported.connect(func(): fov = base_fov + teleport_fov)
 
 
@@ -85,8 +96,16 @@ func kick(degrees: float) -> void:
 
 
 func _on_jumped() -> void:
-	_offset_v -= 0.5
-	_pitch_v += 18.0
+	_offset_v -= 0.9
+	_pitch_v += 26.0
+	fov += jump_fov
+
+
+## Hauling yourself up: the view dips and pitches down toward the ledge, then rights.
+func _on_vaulted(height: float) -> void:
+	_offset_v -= 0.6 + height * 0.8
+	_pitch_v -= 40.0 + height * 30.0
+	footstep.emit(0.6)
 
 
 func _process(delta: float) -> void:
@@ -130,8 +149,14 @@ func _process(delta: float) -> void:
 	var shake_rot := Vector3(sin(_time * 47.0), sin(_time * 39.0 + 1.3), sin(_time * 53.0 + 2.1)) * shake * 0.04
 	var shake_pos := Vector3(sin(_time * 41.0 + 0.7), sin(_time * 57.0), 0.0) * shake * 0.05
 
+	# --- Air: tip with vertical speed, settling back on the ground. ---
+	var air_target := 0.0
+	if not grounded and not player.is_climbing:
+		air_target = clampf(player.velocity.y * air_pitch, -air_pitch_limit, air_pitch_limit)
+	_air_pitch = lerpf(_air_pitch, air_target, 1.0 - exp(-6.0 * delta))
+
 	position = Vector3(bob_x, bob_y + _offset_y + breathe, 0.0) + shake_pos
-	rotation = Vector3(deg_to_rad(_pitch), 0.0, deg_to_rad(_roll)) + shake_rot
+	rotation = Vector3(deg_to_rad(_pitch + _air_pitch), 0.0, deg_to_rad(_roll)) + shake_rot
 
 	# --- FOV kick. ---
 	var target_fov := base_fov
