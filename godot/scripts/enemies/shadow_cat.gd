@@ -331,6 +331,10 @@ func _stop() -> void:
 func _on_lost_sight() -> void:
 	if _state == State.HUNT:
 		_stop()
+	elif _state in [State.WINDUP, State.SWING]:
+		# Calls off the attack: the spikes slide back in and it goes back to roaming.
+		_state = State.RECOVER
+		_state_timer = recover_time
 
 
 # ---------------------------------------------------------------------------

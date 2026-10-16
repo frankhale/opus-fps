@@ -72,6 +72,10 @@ var _sounds: Dictionary
 var _ring: Decal
 
 static var _ring_texture: Texture2D
+## Whether enemies notice the player at all (the console's `aggro`). Off, they don't
+## aggro by sight or when shot, give up any hunt and hide their rings. Static, so it
+## holds across levels.
+static var aggro_enabled := true
 
 
 ## Adds the model and the sound player, and makes the hit-flash overlay. `sounds` maps
@@ -145,7 +149,8 @@ func _update_awareness(delta: float) -> void:
 		# Looked up lazily: the level (and its enemies) is ready before the player is.
 		_player = get_tree().get_first_node_in_group("player")
 	_ring.global_position = Vector3(global_position.x, _ground_y(), global_position.z)
-	if _player == null or _player.get("dead"):
+	_ring.visible = aggro_enabled
+	if _player == null or _player.get("dead") or not aggro_enabled:
 		if alerted:
 			_lose_interest()
 		return
@@ -226,7 +231,7 @@ func take_damage(amount: float, _at := Vector3.ZERO, dir := Vector3.ZERO) -> voi
 	health -= amount
 	_flash_amount = 1.0
 	velocity += dir * clampf(amount * knockback, knockback * 6.0, knockback * 53.0)
-	if not alerted:
+	if not alerted and aggro_enabled:
 		_alert()
 	_memory_timer = memory
 	_provoked = memory

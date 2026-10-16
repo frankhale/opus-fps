@@ -27,6 +27,7 @@ A walkable PS1-style test level built from the asset pack. Open this folder in G
 | `help` | Lists the commands. |
 | `clear` | Empties the log. |
 | `god` | God mode: no damage, plus every weapon and unlimited ammo when it turns on. |
+| `aggro` | Enemy aggro. Off, enemies never notice you, even when you shoot them: any hunting you give up (the shadow cat calls off a swing already under way), their aggro rings disappear and they go back to roaming. Shots already in the air can still hit you. |
 | `sfx` | Sound effects, which is all the game's audio, the wind and surf included. They start off (the Master bus is muted in `default_bus_layout.tres`). |
 | `ps1` | The PS1 look: the low-res render, dithering and 15-bit color. |
 | `fullscreen` | Fullscreen or windowed. |
@@ -36,7 +37,7 @@ A walkable PS1-style test level built from the asset pack. Open this folder in G
 | `screenshot` | Closes the console and saves a screenshot (with the HUD) to `~/Pictures/Opus FPS/`. |
 | `quit` | Quits the game. |
 
-`sfx`, `ps1` and `map` hold when you switch level.
+`aggro`, `sfx`, `ps1` and `map` hold when you switch level.
 
 ## Layout
 

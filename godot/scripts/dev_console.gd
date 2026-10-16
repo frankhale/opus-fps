@@ -32,6 +32,7 @@ func _ready() -> void:
 	register("help", _cmd_help, "List commands")
 	register("clear", func(_args): _log.clear(), "Clear the console")
 	register("god", _cmd_god, "Toggle god mode: no damage, every weapon, unlimited ammo. god 1 / god 0 to set it")
+	register("aggro", _cmd_aggro, "Toggle enemy aggro (off: they never notice or attack you, even when shot). aggro 1 / aggro 0 to set it")
 	register("sfx", _cmd_sfx, "Toggle sound effects (all game audio, ambience included). sfx 1 / sfx 0 to set it")
 	register("ps1", _cmd_ps1, "Toggle the PS1 look (low-res render, dithering, 15-bit color). ps1 1 / ps1 0 to set it")
 	register("fullscreen", _cmd_fullscreen, "Toggle fullscreen. fullscreen 1 / fullscreen 0 to set it")
@@ -220,6 +221,12 @@ func _cmd_god(args: PackedStringArray) -> void:
 		return
 	player.god_mode = _switch(args, player.god_mode)
 	_report("God mode", player.god_mode)
+
+
+## Enemies drop any hunt on their next physics frame (Enemy._update_awareness).
+func _cmd_aggro(args: PackedStringArray) -> void:
+	Enemy.aggro_enabled = _switch(args, Enemy.aggro_enabled)
+	_report("Enemy aggro", Enemy.aggro_enabled)
 
 
 ## Mutes the Master bus, which every sound plays through. AudioServer is global, so the
