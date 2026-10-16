@@ -1,11 +1,21 @@
-@tool
 class_name ShadowCat
-extends CharacterBody3D
-## The shadow cat (assets/enemies/enemy_shadow_cat.glb): a harmless wanderer for now. It
-## has no aggro, health or attack yet. It roams between spots near home, mostly at a
-## walk but now and then at a trot or a full run, and stops between outings to stand and
-## look around. When the player comes within `curious_range` it turns its head to watch
-## them. It's solid to the player and to shots, which just stop on it.
+extends Enemy
+## The shadow cat (assets/enemies/enemy_shadow_cat.glb). Left alone it roams between
+## spots near home, mostly at a walk but now and then at a trot or a full run, and stops
+## between outings to stand and look around, watching the player when they're near.
+##
+## Once aggroed (Enemy: the player inside its ring and in sight, or a shot) it hunts them,
+## running when far and trotting in close, though it won't follow them off dry land
+## (`can_stand`). Within `attack_range` it clubs them with its tail:
+##   * wind-up (`windup_time`): it plants itself facing the player, glows red and hisses,
+##     spikes snap out of its tail and the tail stiffens out behind it like a club.
+##   * swing (`swing_time`): it spins a full turn, sweeping the spiked tail round
+##     through the player. The first touch does `tail_damage` and throws them back and
+##     aside (one hit per swing).
+##   * recovery (`recover_time`): the spikes slide back in and the tail relaxes. It then
+##     keeps a little way off until it can swing again (`attack_cooldown`).
+## When killed it bursts into black smoke and red sparks (loot and respawning come from
+## Enemy).
 ##
 ## It's animated procedurally on its rig (see enemy_shadow_cat in the asset generator).
 ## Three gaits (GAITS) blend into each other by speed, each with its own footfalls,
@@ -23,10 +33,24 @@ extends CharacterBody3D
 ## IK; a hind leg keeps its hock-to-ankle segment as at rest), and paws curl as they
 ## swing through. It also crouches a little and pitches with the slope. The head looks
 ## where it's going, glances around when idle and watches a nearby player. The tail
-## swishes now and then when idle, and the ears twitch and flop with its steps.
-## The model stands in its rest pose (mid-stride, right forepaw raised) in the editor.
+## swishes now and then when idle, and the ears twitch and flop with its steps (and lie
+## back while it hunts). The tail spikes are made here, not in the model: four bone-pale,
+## red-tipped cones on each of tail_1 to tail_5, scaled out from inside the fur.
 
 const MODEL := preload("res://assets/enemies/enemy_shadow_cat.glb")
+const SOUNDS := {
+	"alert": preload("res://assets/sfx/cat_alert.wav"),
+	"charge": preload("res://assets/sfx/cat_charge.wav"),
+	"swing": preload("res://assets/sfx/cat_swing.wav"),
+	"hit": preload("res://assets/sfx/cat_hit.wav"),
+	"hurt": preload("res://assets/sfx/cat_hurt.wav"),
+	"die": preload("res://assets/sfx/cat_die.wav"),
+}
+const PALETTE := preload("res://materials/ps1_palette.tres")
+const GLOW := preload("res://materials/ps1_glow.tres")
+const CHARGE_COLOR := Color(0.9, 0.1, 0.08)
+## The tail's radius at each joint (tail_0 to the tip), as modeled.
+const TAIL_RADII := [0.06, 0.09, 0.14, 0.16, 0.15, 0.1, 0.0]
 
 ## Per gait:
 ##   speed: the speed it's tuned for (m/s); between two gaits' speeds it blends them.
@@ -66,26 +90,40 @@ const GAITS := [
 @export var walk_distance := Vector2(4.0, 12.0)
 ## Seconds it stands between outings.
 @export var idle_time := Vector2(2.0, 6.0)
-## It watches the player within this distance.
+## It watches the player within this distance when not hunting them.
 @export var curious_range := 7.0
+
+@export_group("Tail attack")
+## It swings once the player is this close (across the ground).
+@export var attack_range := 2.0
+## While it can't swing yet, it hangs about this far from the player.
+@export var keep_distance := 1.6
+@export var windup_time := 0.55
+@export var swing_time := 0.42
+@export var recover_time := 0.5
+## Seconds between swings, at least and at most.
+@export var attack_cooldown := Vector2(1.2, 2.0)
+@export var tail_damage := 22.0
+## How hard a hit throws the player (m/s), and how far from the tail a hit lands (m).
+@export var tail_push := 7.0
+@export var tail_reach := 0.4
+## Spike length when fully out (m).
+@export var spike_length := 0.22
 
 ## Where it may go: (world point) -> bool. Set by the level (the island keeps it on dry
 ## land); by default anywhere within wander_radius of home.
 var can_stand: Callable
 
-enum State { IDLE, MOVE }
+enum State { IDLE, MOVE, HUNT, WINDUP, SWING, RECOVER }
 
 var _state := State.IDLE
 var _state_timer := 0.0
 var _target := Vector3.ZERO
 var _speed := 0.0
-var _home := Vector3.ZERO
 var _stuck_timer := 0.0
 var _stuck_from := Vector3.ZERO
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
-var _t := 0.0
 
-var _model: Node3D
 var _skeleton: Skeleton3D
 ## Leg descriptions: bones, rest points and lengths (skeleton space), stance.
 var _legs: Array[Dictionary] = []
@@ -104,15 +142,29 @@ var _swish_timer := 0.0
 var _ear_twitch := {"l": 0.0, "r": 0.0}
 var _ear_timer := {"l": 1.0, "r": 2.0}
 
+## The attack: seconds until it may swing again, the wind-up glow (0 to 1), how far the
+## spikes are out and the tail is stiffened into a club (0 to 1), and the swing in
+## progress (its start heading, spin direction, and whether it has landed).
+var _attack_timer := 0.0
+var _charge := 0.0
+var _spikes_out := 0.0
+var _club := 0.0
+var _swing_from := 0.0
+var _spin := 1.0
+var _hit_done := false
+## The spikes: [MeshInstance3D, rest transform (bone space), size].
+var _spikes: Array = []
+var _tail_lengths: Array[float] = []
+var _strike_audio: AudioStreamPlayer3D
+
+
+func _init() -> void:
+	max_health = 90.0
+	knockback = 0.12
+	gem_drops = 1
+
 
 func _ready() -> void:
-	_model = MODEL.instantiate()
-	_model.rotation.y = PI  # the model faces its +Z; this node faces -Z
-	add_child(_model)
-	if Engine.is_editor_hint():
-		return
-	collision_layer = Enemy.ENEMY_LAYER  # solid to the player and to shots
-	collision_mask = 1
 	floor_snap_length = 0.3
 	var shape := CollisionShape3D.new()
 	var capsule := CapsuleShape3D.new()
@@ -121,58 +173,137 @@ func _ready() -> void:
 	shape.shape = capsule
 	shape.position.y = 0.48
 	add_child(shape)
-	# Kept out of the minimap's snapshot of the level, like the enemies.
-	for g: GeometryInstance3D in _model.find_children("*", "GeometryInstance3D", true, false):
-		g.layers = Enemy.ENEMY_VISUAL_LAYER
+	_setup(MODEL, SOUNDS)
+	_model.rotation.y = PI  # the model faces its +Z; this node faces -Z
 	add_to_group("shadow_cats")
-	_home = global_position
-	_t = randf() * 10.0
+	# The hit plays over the swing's whoosh, so it gets its own player.
+	_strike_audio = AudioStreamPlayer3D.new()
+	_strike_audio.unit_size = 6.0
+	add_child(_strike_audio)
 	_state_timer = randf_range(idle_time.x, idle_time.y)
 	_setup_rig()
+	_build_spikes()
+
+
+func _eye_point() -> Vector3:
+	return global_position + Vector3.UP * 0.8
 
 
 func _physics_process(delta: float) -> void:
-	if Engine.is_editor_hint():
+	if dead:
 		return
 	_t += delta
+	_hurt_cooldown -= delta
+	_attack_timer -= delta
+	_update_awareness(delta)
+	if alerted and _state in [State.IDLE, State.MOVE]:
+		_state = State.HUNT
+
 	var desired := Vector3.ZERO
+	var face_player := false
+	var to_player := _player.global_position - global_position if _player else Vector3.ZERO
+	var dist := Vector2(to_player.x, to_player.z).length()
+	_state_timer -= delta
 	match _state:
 		State.IDLE:
-			_state_timer -= delta
 			if _state_timer <= 0.0:
 				set_out()
 		State.MOVE:
-			var to := _target - global_position
-			to.y = 0.0
-			var dist := to.length()
-			if dist < 0.5:
+			desired = _wander_velocity(delta)
+		State.HUNT:
+			if not alerted:
 				_stop()
 			else:
-				# Slows over the last stretch rather than stopping dead (longer from a run).
-				desired = to / dist * _speed * clampf(dist / maxf(_speed * 0.6, 1.0), 0.35, 1.0)
-				_stuck_timer -= delta
-				if _stuck_timer <= 0.0:
-					if global_position.distance_to(_stuck_from) < 0.3:
-						_stop()  # ran into something; it'll pick somewhere else
-					_stuck_timer = 1.5
-					_stuck_from = global_position
+				var dir := Vector3(to_player.x, 0.0, to_player.z) / maxf(dist, 0.01)
+				if dist < attack_range and _attack_timer <= 0.0 and is_on_floor():
+					_start_windup()
+				elif _attack_timer > 0.0 and dist < keep_distance + 1.0:
+					# Waiting to swing again: hangs about keep_distance off, facing them.
+					desired = dir * clampf((dist - keep_distance) * 2.0, -1.0, 1.0) * GAITS[1].speed * 0.6
+					face_player = true
+				else:
+					# Closes in: a run from afar, a trot near.
+					desired = dir * (GAITS[2].speed if dist > 5.0 else GAITS[1].speed)
+					face_player = dist < 3.0
+				# It won't follow the player off dry land.
+				if desired != Vector3.ZERO and can_stand.is_valid() \
+						and not can_stand.call(global_position + desired.normalized() * 0.8):
+					desired = Vector3.ZERO
+					face_player = true
+		State.WINDUP:
+			face_player = true
+			_charge = move_toward(_charge, 1.0, delta / windup_time)
+			if _state_timer <= 0.0:
+				_start_swing()
+		State.SWING:
+			var t := clampf(1.0 - _state_timer / swing_time, 0.0, 1.0)
+			# A full turn, quick through the middle where the tail sweeps through them.
+			rotation.y = _swing_from + _spin * TAU * smoothstep(0.0, 1.0, t)
+			if not _hit_done:
+				_check_tail_hit()
+			if _state_timer <= 0.0:
+				_state = State.RECOVER
+				_state_timer = recover_time
+		State.RECOVER:
+			face_player = alerted
+			if _state_timer <= 0.0:
+				_attack_timer = randf_range(attack_cooldown.x, attack_cooldown.y)
+				if alerted:
+					_state = State.HUNT
+				else:
+					_stop()
 
-	var hv := Vector3(velocity.x, 0.0, velocity.z).lerp(desired, 1.0 - exp(-4.0 * delta))
+	var attacking := _state in [State.WINDUP, State.SWING, State.RECOVER]
+	_spikes_out = move_toward(_spikes_out, 1.0 if _state in [State.WINDUP, State.SWING] else 0.0,
+		delta * (4.0 if _state == State.WINDUP else 2.5))
+	_club = move_toward(_club, 1.0 if attacking and _state != State.RECOVER else 0.0, delta * 4.0)
+	if _state != State.WINDUP:
+		_charge = move_toward(_charge, 0.0, delta * 3.0)
+
+	var hv := Vector3(velocity.x, 0.0, velocity.z).lerp(desired, 1.0 - exp(-(10.0 if attacking else 4.0) * delta))
 	velocity.x = hv.x
 	velocity.z = hv.z
 	velocity.y = 0.0 if is_on_floor() else velocity.y - _gravity * delta
 	var before := global_position
 	move_and_slide()
-	if hv.length() > 0.05:
-		rotation.y = lerp_angle(rotation.y, atan2(-hv.x, -hv.z), 1.0 - exp(-turn_speed * delta))
+	if _state != State.SWING:
+		if face_player and _player:
+			_face(to_player, delta, 10.0 if _state == State.WINDUP else 6.0)
+		elif hv.length() > 0.05:
+			rotation.y = lerp_angle(rotation.y, atan2(-hv.x, -hv.z), 1.0 - exp(-turn_speed * delta))
 	var moved := Vector2(global_position.x - before.x, global_position.z - before.z).length()
+
+	_flash_amount = move_toward(_flash_amount, 0.0, delta * 6.0)
+	_set_glow(CHARGE_COLOR, maxf(_flash_amount, _charge * 0.35))
 	_animate(delta, moved)
+
+
+## Wandering toward its target; stops on arrival or when it gets stuck.
+func _wander_velocity(delta: float) -> Vector3:
+	var to := _target - global_position
+	to.y = 0.0
+	var dist := to.length()
+	if dist < 0.5:
+		_stop()
+		return Vector3.ZERO
+	_stuck_timer -= delta
+	if _stuck_timer <= 0.0:
+		if global_position.distance_to(_stuck_from) < 0.3:
+			_stop()  # ran into something; it'll pick somewhere else
+			return Vector3.ZERO
+		_stuck_timer = 1.5
+		_stuck_from = global_position
+	# Slows over the last stretch rather than stopping dead (longer from a run).
+	return to / dist * _speed * clampf(dist / maxf(_speed * 0.6, 1.0), 0.35, 1.0)
 
 
 ## Picks somewhere to go and sets off for it, at `gait` (0 walk, 1 trot, 2 run) or, by
 ## default, one picked by trot_chance and run_chance. The dev console's `cat` command
-## calls it to show a gait on demand. Returns false if there was nowhere to go.
+## calls it to show a gait on demand. Returns false if there was nowhere to go (or it's
+## busy hunting the player).
 func set_out(gait := -1) -> bool:
+	if dead or _state not in [State.IDLE, State.MOVE]:
+		return false
 	var allowed := can_stand if can_stand.is_valid() else func(_p: Vector3) -> bool: return true
 	if gait < 0:
 		var roll := randf()
@@ -195,6 +326,159 @@ func set_out(gait := -1) -> bool:
 func _stop() -> void:
 	_state = State.IDLE
 	_state_timer = randf_range(idle_time.x, idle_time.y)
+
+
+func _on_lost_sight() -> void:
+	if _state == State.HUNT:
+		_stop()
+
+
+# ---------------------------------------------------------------------------
+# Tail attack
+# ---------------------------------------------------------------------------
+func _start_windup() -> void:
+	_state = State.WINDUP
+	_state_timer = windup_time
+	_play("charge", 2.0)
+
+
+func _start_swing() -> void:
+	_state = State.SWING
+	_state_timer = swing_time
+	_swing_from = rotation.y
+	_spin = 1.0 if randf() < 0.5 else -1.0
+	_hit_done = false
+	_play("swing", 3.0)
+
+
+## Lands the swing if the spiked tail touches the player: any tail joint (or its tip)
+## within tail_reach of their body, from shins to shoulders.
+func _check_tail_hit() -> void:
+	if _player == null or _player.get("dead") or _skeleton == null:
+		return
+	var sk := _skeleton.global_transform
+	var feet := _player.global_position + Vector3.UP * 0.3
+	var head := _player.global_position + Vector3.UP * 1.5
+	for k in range(1, 6):
+		var pose := _skeleton.get_bone_global_pose(_skeleton.find_bone("tail_%d" % k))
+		for along in [0.0, 1.0]:
+			var p: Vector3 = sk * (pose.origin + pose.basis.y.normalized() * _tail_lengths[k] * along)
+			var nearest := Geometry3D.get_closest_point_to_segment(p, feet, head)
+			if p.distance_to(nearest) < tail_reach + 0.35:  # the player's own radius too
+				_land_hit(p)
+				return
+
+
+func _land_hit(at: Vector3) -> void:
+	_hit_done = true
+	var away := _player.global_position - global_position
+	away = Vector3(away.x, 0.0, away.z).normalized()
+	# Thrown back from the cat and along the way the tail was sweeping.
+	var sweep := Vector3.UP.cross(away) * _spin
+	var dir := (away + sweep * 0.6).normalized()
+	_player.take_damage(tail_damage, at, dir)
+	if _player is CharacterBody3D:
+		(_player as CharacterBody3D).velocity += dir * tail_push + Vector3.UP * 3.0
+	_strike_audio.stream = _sounds["hit"]
+	_strike_audio.volume_db = 4.0
+	_strike_audio.pitch_scale = randf_range(0.9, 1.1)
+	_strike_audio.play()
+	var sparks := FX.burst(CHARGE_COLOR, 12, 4.0, 0.06, 0.4, -9.8, 2.0)
+	get_parent().add_child(sparks)
+	sparks.global_position = at
+	sparks.emitting = true
+	get_tree().create_timer(1.0).timeout.connect(sparks.queue_free)
+
+
+## Four spikes on each of tail_1 to tail_5, all round the tail, leaning toward its tip.
+## Each starts inside the fur and is scaled out along its length by _spikes_out.
+func _build_spikes() -> void:
+	if _skeleton == null:
+		return
+	var mesh := _spike_mesh()
+	for k in range(1, 6):
+		var attach := BoneAttachment3D.new()
+		attach.bone_name = "tail_%d" % k
+		_skeleton.add_child(attach)
+		var radius: float = (TAIL_RADII[k] + TAIL_RADII[k + 1]) * 0.5 * 0.7
+		for j in 4:
+			var a := TAU * (j + 0.5 * (k % 2)) / 4.0
+			var out := Vector3(cos(a), 0.0, sin(a))
+			var lean := (out + Vector3(0.0, 0.45, 0.0)).normalized()  # bone +Y runs toward the tip
+			var spike := MeshInstance3D.new()
+			spike.mesh = mesh
+			spike.layers = ENEMY_VISUAL_LAYER
+			spike.visible = false
+			attach.add_child(spike)
+			var rest := Transform3D(Basis(Quaternion(Vector3.UP, lean)), out * radius + Vector3.UP * _tail_lengths[k] * 0.5)
+			_spikes.append([spike, rest, randf_range(0.8, 1.15) * (1.15 - 0.06 * absf(k - 3))])
+
+
+## A four-sided spike along +Y, one meter tall before scaling: a bone-pale shaft with a
+## glowing red point.
+static func _spike_mesh() -> ArrayMesh:
+	var mesh := ArrayMesh.new()
+	var ring := func(r: float, y: float) -> Array:
+		var pts := []
+		for i in 4:
+			var a := TAU * i / 4.0 + PI / 4.0
+			pts.append(Vector3(cos(a) * r, y, sin(a) * r))
+		return pts
+	var base: Array = ring.call(0.16, 0.0)
+	var waist: Array = ring.call(0.07, 0.62)
+	var tip := Vector3(0.0, 1.0, 0.0)
+	# Palette swatches (8 x 4): bone is column 7 of the accent row, red column 0.
+	var bone_uv := Vector2(7.5 / 8.0, 3.5 / 4.0)
+	var red_uv := Vector2(0.5 / 8.0, 3.5 / 4.0)
+	for part in [[PALETTE, bone_uv], [GLOW, red_uv]]:
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		st.set_uv(part[1])
+		for i in 4:
+			var j := (i + 1) % 4
+			if part[0] == PALETTE:
+				for v in [base[i], waist[i], waist[j], base[i], waist[j], base[j]]:
+					st.add_vertex(v)
+			else:
+				for v in [waist[i], tip, waist[j]]:
+					st.add_vertex(v)
+		st.generate_normals()
+		st.set_material(part[0])
+		st.commit(mesh)
+	return mesh
+
+
+func _update_spikes() -> void:
+	var out := _spikes_out
+	for s in _spikes:
+		var spike: MeshInstance3D = s[0]
+		spike.visible = out > 0.02
+		if not spike.visible:
+			continue
+		var rest: Transform3D = s[1]
+		# Snaps out with a little overshoot, thickening as it goes.
+		var grow := out * (1.0 + 0.15 * sin(out * PI))
+		var size: float = s[2] * spike_length
+		var stretch := Vector3(size * (0.4 + 0.6 * out), size * grow, size * (0.4 + 0.6 * out))
+		spike.transform = Transform3D(rest.basis * Basis.from_scale(stretch), rest.origin)
+
+
+func _on_death() -> void:
+	_state = State.IDLE
+	_charge = 0.0
+	_spikes_out = 0.0
+	_club = 0.0
+	for c in [Color(0.04, 0.04, 0.05), Color(0.15, 0.13, 0.16), CHARGE_COLOR]:
+		var puff := FX.burst(c, 16, 4.0, 0.14, 0.9, -3.0, 0.6 if c != CHARGE_COLOR else 3.0)
+		add_child(puff)
+		puff.position.y = 0.6
+		puff.emitting = true
+		get_tree().create_timer(1.2).timeout.connect(puff.queue_free)
+
+
+func _on_respawn() -> void:
+	_stop()
+	_update_spikes()
 
 
 # ---------------------------------------------------------------------------
@@ -239,6 +523,10 @@ func _setup_rig() -> void:
 			"stand": back_paw * mirror,
 			"pole": knee - (hip + hock) * 0.5,  # bent as at rest
 		})
+	# Tail bone lengths; the tip bone's runs on to the model's tail tip, about 0.11 m.
+	for k in 5:
+		_tail_lengths.append(rest.call("tail_%d" % k).distance_to(rest.call("tail_%d" % (k + 1))))
+	_tail_lengths.append(0.11)
 
 
 ## The current gait's settings, blended between the two gaits either side of _gait.
@@ -297,9 +585,11 @@ func _animate(delta: float, moved: float) -> void:
 	_animate_head(delta)
 	_animate_tail(delta)
 	_animate_ears(delta)
+	_update_spikes()
 
 
-## Crouch, bob and rock with the stride, and pitch with the slope under the paws.
+## Crouch, bob and rock with the stride, and pitch with the slope under the paws. Winding
+## up, it crouches lower, ready to spin.
 func _animate_body(delta: float) -> void:
 	var low := _gait_value("low")
 	var bob := -_gait_value("bob") * cos(TAU * 2.0 * (_phase - low)) * _moving
@@ -309,9 +599,11 @@ func _animate_body(delta: float) -> void:
 	var back := global_position + global_basis.z * 0.25
 	var slope := atan2(_ground_at(space, front) - _ground_at(space, back), 0.55)
 	_pitch = lerpf(_pitch, clampf(slope, -0.4, 0.4), 1.0 - exp(-6.0 * delta))
-	# Pitching about the node's X raises its front (-Z) for a positive angle.
-	_model.transform = Transform3D(Basis(Vector3.RIGHT, _pitch + rock) * Basis(Vector3.UP, PI),
-		Vector3(0.0, -_gait_value("crouch") + bob, 0.0))
+	# The model is turned half round (it faces its +Z); turned that way, pitching it by
+	# -angle about X raises the node's front (-Z) by angle. Position and rotation are set
+	# apart from scale, which Enemy tweens when it respawns.
+	_model.rotation = Vector3(-(_pitch + rock), PI, 0.0)
+	_model.position = Vector3(0.0, -_gait_value("crouch") + bob - 0.06 * _club, 0.0)
 
 
 ## Bends a leg so its paw reaches `paw` (skeleton space), curling the paw by `curl` (0 to
@@ -367,13 +659,15 @@ func _turn(bone_name: String, turn: Quaternion) -> void:
 
 
 func _animate_head(delta: float) -> void:
-	var player := get_tree().get_first_node_in_group("player") as Node3D
 	var watching := false
 	var running := clampf(_gait - 1.0, 0.0, 1.0) * _moving
-	if player and running < 0.5 and global_position.distance_to(player.global_position) < curious_range:
+	var near := _player != null and global_position.distance_to(_player.global_position) < curious_range
+	if _state == State.SWING:
+		_look_want = Vector2.ZERO  # spinning: head held straight
+	elif _player and (alerted or (near and running < 0.5)):
 		# Turns to watch the player, as far as its neck allows.
 		var head := _skeleton.global_transform * _skeleton.get_bone_global_pose(_skeleton.find_bone("head")).origin
-		var to := _skeleton.global_transform.basis.inverse() * (player.global_position + Vector3.UP * 1.4 - head)
+		var to := _skeleton.global_transform.basis.inverse() * (_player.global_position + Vector3.UP * 1.4 - head)
 		_look_want = Vector2(clampf(atan2(to.x, to.z), -1.1, 1.1),
 			clampf(atan2(to.y, Vector2(to.x, to.z).length()), -0.3, 0.5))
 		watching = true
@@ -387,7 +681,7 @@ func _animate_head(delta: float) -> void:
 	_look = _look.lerp(_look_want, 1.0 - exp(-(4.0 if watching else 3.0) * delta))
 	# A walk nods with each step; faster gaits hold the head steadier, reaching forward.
 	var nod := sin(_phase * TAU * 2.0) * 0.05 * _moving * clampf(1.0 - _gait, 0.0, 1.0)
-	var reach := _gait_value("head") * _moving
+	var reach := _gait_value("head") * _moving + 0.15 * _club  # head down, braced to swing
 	# Against the run's rocking, so the head stays level on its target.
 	var steady := -_gait_value("rock") * cos(TAU * (_phase - _gait_value("low"))) * _moving
 	_turn("neck", Quaternion(Vector3.UP, _look.x * 0.4) * Quaternion(Vector3.RIGHT, -_look.y * 0.4 + reach * 0.6 - steady * 0.5))
@@ -413,10 +707,31 @@ func _animate_tail(delta: float) -> void:
 		var ride := sin(TAU * (_phase - 0.3) - k * 0.6) * 0.12 * stream
 		var lift := Quaternion(Vector3.RIGHT, sin(_t * 0.9 - k * 0.5) * 0.05 + uncurl + ride)
 		_turn("tail_%d" % k, sway * lift)
+	if _club > 0.001:
+		_club_tail()
+
+
+## Stiffens the tail into a club, straight out behind and a little raised, blending
+## from its animated pose by _club. Swinging, it trails a little against the spin.
+func _club_tail() -> void:
+	var lag := 0.0
+	if _state == State.SWING:
+		var t := clampf(1.0 - _state_timer / swing_time, 0.0, 1.0)
+		lag = -_spin * sin(PI * t) * 0.5  # the tail drags behind the turn, most mid-swing
+	var p := _skeleton.get_bone_global_pose(_skeleton.find_bone("tail_0")).origin
+	for k in 6:
+		var bone := _skeleton.find_bone("tail_%d" % k)
+		var pose := _skeleton.get_bone_global_pose(bone)
+		# Straight back (-Z, the model's rear) and slightly up, bent more toward the tip.
+		var club_dir := Vector3(0.0, 0.18, -1.0).normalized().rotated(Vector3.UP, lag * (0.4 + k * 0.15))
+		var dir := pose.basis.y.normalized().slerp(club_dir, _club)
+		var end := p + dir * _tail_lengths[k]
+		_aim(bone, p, end)
+		p = end
 
 
 func _animate_ears(delta: float) -> void:
-	var back := _gait_value("ears") * _moving
+	var back := maxf(_gait_value("ears") * _moving, 0.55 if alerted else 0.0)
 	for side in ["l", "r"]:
 		var s := 1.0 if side == "l" else -1.0
 		_ear_timer[side] -= delta
@@ -426,8 +741,8 @@ func _animate_ears(delta: float) -> void:
 		_ear_twitch[side] = maxf(_ear_twitch[side] - delta * 4.0, 0.0)
 		var twitch: float = sin(_ear_twitch[side] * PI) * 0.5 * (1.0 - back)
 		var ear := _skeleton.get_bone_global_rest(_skeleton.find_bone("ear_%s_0" % side))
-		# A twitch swivels the ear about its own length; running lays them back (toward
-		# -Z), and the tips flop with each step.
+		# A twitch swivels the ear about its own length; running or hunting lays them back
+		# (toward -Z), and the tips flop with each step.
 		_turn("ear_%s_0" % side, Quaternion(Vector3.RIGHT, -back) * Quaternion(ear.basis.y.normalized(), -s * twitch))
 		_turn("ear_%s_1" % side, Quaternion(Vector3.RIGHT, sin(_phase * TAU * 2.0 + 1.0) * 0.12 * _moving - back * 0.3))
 

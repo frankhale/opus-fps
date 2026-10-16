@@ -21,6 +21,8 @@ the world, written straight into the Godot project at godot/assets/sfx/.
   shield_hum.wav     the shield's glassy shimmer while it lasts, seamless loop
   shield_down.wav    the shield fading: a falling, thinning chord
   spider_alert/charge/spit/hurt/die/step.wav   the spider: chittering, hissing and its toxin spray
+  cat_alert/charge/swing/hit/hurt/die.wav   the shadow cat: a yowl, its tail spikes
+                     snapping out, the swing of its tail, the spiked hit, and its cries
 
 Loop files get a .import that tells Godot to loop them. Run from the repo root:
   python3 tools/generate_sfx.py
@@ -445,6 +447,70 @@ def spider_sounds(rng):
     write("spider_step.wav", [s * e for s, e in zip(highpass(noise(n, rng), 0.3), env(n, 0.0005, 0.006))], 0.5)
 
 
+def cat_sounds(rng):
+    """The shadow cat: a hissing yowl, its tail spikes snapping out, the whoosh of its
+    tail swung like a club, the spiked impact, and its cries when hurt and dying."""
+    def yowl(n, pitch, vibrato=6.0, depth=0.03, harm=(1.0, 0.7, 0.5, 0.35, 0.2, 0.12)):
+        """A cat's voice: a buzzy, nasal tone following pitch(t) (Hz, t from 0 to 1)
+        with a wobble, its brighter harmonics swelling in the middle like a mouth opening."""
+        out, ph = [], 0.0
+        for i in range(n):
+            t = i / n
+            f = pitch(t) * (1 + depth * math.sin(2 * math.pi * vibrato * i / RATE))
+            ph += 2 * math.pi * f / RATE
+            open_ = math.sin(math.pi * t) ** 0.7
+            out.append(sum(a * (open_ if k > 1 else 1.0) * math.sin(ph * (k + 1)) for k, a in enumerate(harm)))
+        return out
+
+    def hiss(n, bright=0.3):
+        return highpass(noise(n, rng), bright)
+
+    # Alert: a rising, wavering yowl over a spitting hiss.
+    n = int(0.75 * RATE)
+    voice = yowl(n, lambda t: 420 + 380 * math.sin(math.pi * min(t * 1.3, 1.0)), 7.0, 0.04)
+    write("cat_alert.wav", [(v * 0.6 + h * 0.5 * (1 - t / n)) * e
+                            for t, (v, h, e) in enumerate(zip(voice, hiss(n), env(n, 0.03, 0.35)))], 0.7)
+
+    # Charge: the spikes snapping out of the tail, a run of bright metallic "shing"s
+    # (inharmonic partials, struck in quick succession) over a hiss drawn in.
+    n = int(0.6 * RATE)
+    ring = [0.0] * n
+    for k, start in enumerate((0.0, 0.07, 0.13, 0.18, 0.22)):
+        s0 = int(start * RATE)
+        for f, a in ((2300 + 140 * k, 1.0), (3710 + 90 * k, 0.6), (5480, 0.35)):
+            for i in range(s0, n):
+                ring[i] += a * math.sin(2 * math.pi * f * (i - s0) / RATE) * math.exp(-(i - s0) / (0.09 * RATE)) * 0.5
+    build = [min(i / n * 1.5, 1.0) ** 2 for i in range(n)]
+    write("cat_charge.wav", mix(ring, [h * b * 0.6 for h, b in zip(hiss(n, 0.25), build)]), 0.6)
+
+    # Swing: a heavy whoosh, swelling and falling, its pitch rising as it passes.
+    n = int(0.5 * RATE)
+    air = noise(n, rng)
+    whoosh, y = [], 0.0
+    for i, a in enumerate(air):
+        t = i / n
+        y += (0.04 + 0.25 * math.sin(math.pi * t) ** 2) * (a - y)
+        whoosh.append(y * math.sin(math.pi * t) ** 1.5)
+    write("cat_swing.wav", highpass(whoosh, 0.02), 0.65)
+
+    # Hit: a spiked club landing: a thump, a crunch and a scrape of spikes.
+    n = int(0.35 * RATE)
+    crunch = [s * e for s, e in zip(lowpass(noise(n, rng), 0.5), env(n, 0.001, 0.04))]
+    scrape = [s * e * 0.5 for s, e in zip(highpass(noise(n, rng), 0.35), env(n, 0.005, 0.08))]
+    write("cat_hit.wav", mix([s * 0.9 for s in sweep_thump(n, 120, 55, 0.03, 0.08)], crunch, scrape), 0.85)
+
+    # Hurt: a short, sharp mrow, breaking upward.
+    n = int(0.28 * RATE)
+    write("cat_hurt.wav", [v * e for v, e in zip(yowl(n, lambda t: 650 + 450 * t, 9.0, 0.05), env(n, 0.01, 0.1))], 0.65)
+
+    # Death: a long yowl sinking away into a hiss.
+    n = int(1.3 * RATE)
+    voice = yowl(n, lambda t: 760 - 520 * t ** 0.8, 5.0, 0.05)
+    fade = [math.exp(-i / (0.5 * RATE)) for i in range(n)]
+    sigh = [h * e * 0.35 for h, e in zip(lowpass(hiss(n, 0.2), 0.6), env(n, 0.3, 0.5))]
+    write("cat_die.wav", mix([v * f * 0.8 for v, f in zip(voice, fade)], sigh), 0.8)
+
+
 def generate():
     os.makedirs(OUT, exist_ok=True)
     for i in range(5):
@@ -512,6 +578,7 @@ def generate():
     golem_sounds(random.Random(19))
     shield_sounds(random.Random(23))
     spider_sounds(random.Random(29))
+    cat_sounds(random.Random(37))
 
     for name in ("slide_loop.wav", "wind_loop.wav", "surf_loop.wav", "portal_hum.wav", "golem_hum.wav", "shield_hum.wav"):
         path = os.path.join(OUT, name + ".import")

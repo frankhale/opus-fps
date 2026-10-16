@@ -293,6 +293,6 @@ func _cmd_cat(args: PackedStringArray) -> void:
 		return
 	for cat: ShadowCat in cats:
 		if not cat.set_out(gait):
-			_print("[color=#f88]The cat has nowhere to %s from where it is[/color]" % gaits[gait])
+			_print("[color=#f88]The cat won't %s now[/color] (it's hunting you, or has nowhere to go)" % gaits[gait])
 			return
 	_print("The shadow cat sets off at a [b]%s[/b]" % gaits[gait])

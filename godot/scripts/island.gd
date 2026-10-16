@@ -300,6 +300,8 @@ func _scatter_props() -> void:
 
 ## The shadow cat (scripts/enemies/shadow_cat.gd), wandering the island on dry land.
 func _place_cat() -> void:
+	if Engine.is_editor_hint():
+		return  # an Enemy: it only runs in the game
 	var angle := PI * 0.5 + CAT_ANGLE
 	var r := coast_radius(angle) - CAT_INLAND
 	var x := cos(angle) * r
