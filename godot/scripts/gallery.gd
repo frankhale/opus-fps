@@ -9,9 +9,10 @@ extends Node3D
 ## The layout is built when the node enters the tree (also in the editor), straight
 ## from the files in res://assets/, so new models show up without editing anything.
 ## The player starts at z = 30 looking toward -Z: the first row is nearest. The ground is
-## a Terrain node (scripts/terrain.gd) of grass tiles, square since that's what Terrain
-## builds; every model, name and heading is dropped onto its gentle bumps. A wooden fence
-## runs round the edge, backed by invisible walls so you can't jump it and fall off.
+## dead flat grass at height 0, painted like the levels' ground (the palette's grass
+## swatch, dimmed the same, a swatch per 1 m face), so every model stands level on it. A
+## wooden fence runs round the edge, backed by invisible walls so you can't jump it and
+## fall off.
 ## The air is clear: in the game it turns off the world's fog, haze and ground mist.
 
 ## Rows from front to back: small things first so the big ones don't hide them.
@@ -33,8 +34,15 @@ const ROW_GAP := 8.0
 const MAX_WIDTH := 70.0
 ## z of the front edge of the first row.
 const START_Z := 22.0
+## The ground's look: the pack's palette material dimmed like the levels' ground
+## (Terrain.ground_brightness), every face on the grass swatch (column, row).
+const GROUND_MATERIAL := preload("res://materials/ps1_palette.tres")
+const GROUND_BRIGHTNESS := 0.8
+const GRASS_SWATCH := Vector2(1, 0)
+## Size of the ground's faces (small faces keep the PS1 vertex snapping steady up close).
+const GROUND_STEP := 1.0
 
-## Length of one fence_wood segment, in meters (it divides the 8 m ground tiles).
+## Length of one fence_wood segment, in meters (the ground's sides are whole numbers of them).
 const FENCE_SEGMENT := 2.0
 ## Height of the invisible walls behind the fence.
 const WALL_HEIGHT := 4.0
@@ -73,9 +81,6 @@ func build() -> void:
 	var z := START_Z
 	var min_x := 0.0
 	var max_x := 0.0
-	# Everything standing on the ground, with the x/z area under it, to drop onto the
-	# terrain once it's built: [[node, footprint], ...].
-	var standing := []
 	for cat in CATEGORIES:
 		var names := _model_names(cat)
 		if names.is_empty():
@@ -128,8 +133,7 @@ func build() -> void:
 			var cz := z - depth / 2.0
 			if first:
 				var title: String = cat.to_upper() + ("" if s == 1.0 else "  (shown %s×)" % _num(s))
-				var heading := _heading(row, title, Vector3(0.0, height + 1.4, z - depth))
-				standing.append([heading, Rect2(0.0, z - depth, 0.0, 0.0)])
+				_heading(row, title, Vector3(0.0, height + 1.4, z - depth))
 				first = false
 			for it in line:
 				var box: AABB = it.box
@@ -139,21 +143,19 @@ func build() -> void:
 				inst.position = Vector3(mid - (box.position.x + box.size.x / 2.0), -box.position.y,
 					cz - (box.position.z + box.size.z / 2.0))
 				row.add_child(inst)
-				var footprint := Rect2(mid - box.size.x / 2.0, cz - box.size.z / 2.0, box.size.x, box.size.z)
-				standing.append([inst, footprint])
-				var label := _name_label(row, inst.name, Vector3(mid, minf(box.size.y, 8.0) + 0.3, cz))
-				standing.append([label, footprint])
+				_name_label(row, inst.name, Vector3(mid, minf(box.size.y, 8.0) + 0.3, cz))
 				x += it.slot + GAP
 			min_x = minf(min_x, -line_w / 2.0)
 			max_x = maxf(max_x, line_w / 2.0)
 			z -= depth + ROW_GAP
 	var area := Rect2(min_x - 10.0, z - 10.0, max_x - min_x + 20.0, START_Z + 30.0 - z)
-	var ground := _ground(area)
-	# The ground is a whole number of 8 m tiles, so the fence's 2 m segments fit it exactly.
-	_fence(Rect2(ground.position.x - ground.extent(), ground.position.z - ground.extent(),
-		2.0 * ground.extent(), 2.0 * ground.extent()))
-	for s in standing:
-		(s[0] as Node3D).position.y += _ground_height(ground, s[1])
+	# A square field round it, an odd number of 8 m across (the size the grass tiles it
+	# used to be made of came to), so the fence's 2 m segments fit it exactly.
+	var tiles := ceili(maxf(area.size.x, area.size.y) / 8.0)
+	var side := (2 * ceili((tiles - 1) / 2.0) + 1) * 8.0
+	area = Rect2(area.get_center() - Vector2(side, side) / 2.0, Vector2(side, side))
+	_ground(area)
+	_fence(area)
 
 
 ## Hangs the arcs under the golem and returns its bounds stretched down to the ground,
@@ -224,61 +226,55 @@ func _label(text: String, size: int, pixel: float, color: Color) -> Label3D:
 	label.font_size = size
 	label.pixel_size = pixel
 	label.modulate = color
-	label.outline_size = size / 6
+	@warning_ignore("integer_division")
+	label.outline_size = size / 6  # whole pixels
 	label.outline_modulate = Color(0.05, 0.05, 0.06)
 	label.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
 	label.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
 	return label
 
 
-## Grass ground covering `area` (x/z rectangle): a Terrain of terrain_grass tiles with
-## the hills turned off, the smallest square of tiles around the area's center.
-func _ground(area: Rect2) -> Terrain:
-	var tiles := ceili(maxf(area.size.x, area.size.y) / Terrain.TILE)
-	var half := ceili((tiles - 1) / 2.0)  # Terrain grids are 2 * half + 1 tiles across
-	var t := Terrain.new()
-	t.name = "Ground"
-	t.half = half
-	t.inner_hill_height = 0.0
-	t.outer_hill_height = 0.0
-	t.rim_height = 0.0
-	t.road_x = NAN
-	t.road_z = NAN
-	t.keep_faces = true
-	var layout := PackedStringArray()
-	for j in 2 * half + 1:
-		for i in 2 * half + 1:
-			# Turning every other tile hides the repetition of the grass pattern.
-			layout.append("terrain_grass:%d" % (180 if (i + j) % 2 == 0 else 0))
-	t.tiles = layout
-	t.position = Vector3(area.get_center().x, 0.0, area.get_center().y)
-	add_child(t)  # builds the meshes and collision
-	return t
-
-
-## Highest point of the ground over a footprint (x/z rectangle), so a model set there
-## stands on the bumps instead of sinking into them.
-func _ground_height(ground: Terrain, footprint: Rect2) -> float:
-	var best := -INF
-	for u in [0.0, 0.5, 1.0]:
-		for v in [0.0, 0.5, 1.0]:
-			var p := footprint.position + footprint.size * Vector2(u, v)
-			best = maxf(best, _height_at(ground, p.x - ground.position.x, p.y - ground.position.z))
-	return best
-
-
-## Ground height at (x, z) in the terrain's own space, from its tile triangles.
-func _height_at(ground: Terrain, x: float, z: float) -> float:
-	var from := Vector3(x, 100.0, z)
-	for t in ground.tile_faces:
-		if x < t.min.x or x > t.max.x or z < t.min.y or z > t.max.y:
-			continue
-		var f: PackedVector3Array = t.faces
-		for i in range(0, f.size(), 3):
-			var hit = Geometry3D.ray_intersects_triangle(from, Vector3.DOWN, f[i], f[i + 1], f[i + 2])
-			if hit != null:
-				return hit.y
-	return 0.0
+## Flat grass ground covering `area` (x/z rectangle) at height 0, solid underfoot.
+## Each face gets its own vertices so it can sit in the grass swatch, as the terrain
+## tiles' faces do.
+func _ground(area: Rect2) -> void:
+	var nx := ceili(area.size.x / GROUND_STEP)
+	var nz := ceili(area.size.y / GROUND_STEP)
+	var verts := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	for j in nz:
+		for i in nx:
+			var x0 := area.position.x + i * GROUND_STEP
+			var z0 := area.position.y + j * GROUND_STEP
+			for c in [Vector2(0, 0), Vector2(1, 0), Vector2(0, 1), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)]:
+				verts.append(Vector3(x0 + c.x * GROUND_STEP, 0.0, z0 + c.y * GROUND_STEP))
+				uvs.append((GRASS_SWATCH * 16.0 + Vector2(2.0, 2.0) + c * 12.0) / Vector2(128.0, 64.0))
+	var normals := PackedVector3Array()
+	normals.resize(verts.size())
+	normals.fill(Vector3.UP)
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	var mat: ShaderMaterial = GROUND_MATERIAL.duplicate()
+	mat.set_shader_parameter("albedo_scale", GROUND_BRIGHTNESS)
+	mesh.surface_set_material(0, mat)
+	var ground := MeshInstance3D.new()
+	ground.name = "Ground"
+	ground.mesh = mesh
+	add_child(ground)
+	var body := StaticBody3D.new()
+	body.name = "Collision"
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(area.size.x, 1.0, area.size.y)
+	shape.shape = box
+	shape.position = Vector3(area.get_center().x, -0.5, area.get_center().y)
+	body.add_child(shape)
+	ground.add_child(body)
 
 
 ## A wooden fence along the edge of `area` (x/z rectangle) and an invisible wall just
