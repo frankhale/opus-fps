@@ -10,9 +10,9 @@ extends CharacterBody3D
 ##
 ## Its hangings are rigged (see enemy_arcane_eye in the asset generator): each chain and
 ## each cloth strip is a run of three bones. Here each one is simulated as a little rope
-## (verlet points joined by fixed lengths, under gravity and air drag) pinned to the frame
-## where it hangs, and its bones are aimed along the rope every frame. So they really
-## swing: drifting, speeding up and slowing, bobbing, tipping and turning all fling them
+## (HangingRopes: verlet points joined by fixed lengths, under gravity and air drag)
+## pinned to the frame where it hangs, and its bones are aimed along the rope every frame.
+## So they really swing: drifting, speeding up and slowing, bobbing, tipping and turning all fling them
 ## about, and they trail behind, overshoot and settle on their own. The cloth is a little
 ## stiff (it eases back toward hanging straight) and stirs in a faint breeze. Now and then
 ## it glances aside and back, so even idle it sets them swaying.
@@ -58,12 +58,8 @@ var _gaze := 0.0
 ## A sideways glance (radians from where it would look) and when to take the next.
 var _glance := 0.0
 var _glance_timer := 2.0
-## One per chain and cloth strip: "bones" (top first), "rest" (its joints and tip at rest,
-## skeleton space), "points" and "prev" (the simulated joints now and a step ago, world
-## space; the first is pinned), "lengths" (between joints, world space), "stiff" (how
-## quickly it eases back toward its rest shape, per second), "drag" (air drag, per
-## second) and "breeze" (how much wind stirs it).
-var _ropes: Array[Dictionary] = []
+## The chains and cloth strips, simulated as ropes.
+var _ropes: HangingRopes
 ## Blinking: seconds into the current blink (negative when not blinking), seconds until
 ## the next, whether another follows straight after, and the squint (eased).
 var _blink_t := -1.0
@@ -150,7 +146,8 @@ func _physics_process(delta: float) -> void:
 	var tip := clampf(-local_v.z * 0.12, -0.25, 0.25)
 	_model.rotation = Vector3(-_gaze + tip + sin(_t * 1.1) * 0.05, PI, sin(_t * 0.8) * 0.06 + clampf(local_v.x * 0.1, -0.2, 0.2))
 	_light.light_energy = 0.7 + 0.25 * sin(_t * 2.3)
-	_animate_hangings(delta)
+	if _ropes:
+		_ropes.step(delta, _t)
 	_animate_lids(delta)
 
 
@@ -181,75 +178,12 @@ func _ground_y() -> float:
 	return hit.position.y if hit else global_position.y - hover_height
 
 
-## Finds the hanging chains of bones (pendant_<k>_<j>, cloth_<side>_<k>_<j>) and starts
-## each rope hanging at rest.
+## Starts each chain (pendant_<k>_<j>) and cloth strip (cloth_<side>_<k>_<j>) hanging at
+## rest. The cloth is a little stiff and stirs in the breeze; the chains are heavy.
 func _setup_ropes() -> void:
-	var groups := {}
-	for i in _skeleton.get_bone_count():
-		var bone := _skeleton.get_bone_name(i)
-		if bone.begins_with("pendant_") or bone.begins_with("cloth_"):
-			var cut := bone.rfind("_")
-			groups.get_or_add(bone.substr(0, cut), {})[int(bone.substr(cut + 1))] = i
-	var sk := _skeleton.global_transform
-	for key: String in groups:
-		var bones: Array[int] = []
-		for j in range((groups[key] as Dictionary).size()):
-			bones.append(groups[key][j])
-		var rest := PackedVector3Array()
-		for bone in bones:
-			rest.append(_skeleton.get_bone_global_rest(bone).origin)
-		rest.append(rest[-1] * 2.0 - rest[-2])  # the tip: the segments are equal
-		var points := PackedVector3Array()
-		var lengths := PackedFloat32Array()
-		for i in rest.size():
-			points.append(sk * rest[i])
-			if i > 0:
-				lengths.append(points[i].distance_to(points[i - 1]))
-		var cloth := key.begins_with("cloth_")
-		_ropes.append({
-			"bones": bones, "rest": rest, "points": points, "prev": points.duplicate(), "lengths": lengths,
-			"stiff": 1.5 if cloth else 0.6, "drag": 3.0 if cloth else 1.8, "breeze": 1.0 if cloth else 0.15,
-			"phase": randf() * TAU,
-		})
-
-
-## Steps each rope: carries its top along with the frame, lets the rest fall, drift and
-## swing, keeps the joints their lengths apart, then aims the bones along it.
-func _animate_hangings(delta: float) -> void:
-	if _skeleton == null or _ropes.is_empty():
-		return
-	var sk := _skeleton.global_transform
-	var to_sk := sk.affine_inverse()
-	var gravity := Vector3.DOWN * 9.8
-	for rope in _ropes:
-		var rest: PackedVector3Array = rope.rest
-		var points: PackedVector3Array = rope.points
-		var prev: PackedVector3Array = rope.prev
-		var lengths: PackedFloat32Array = rope.lengths
-		var keep := exp(-float(rope.drag) * delta)
-		var ease_back := 1.0 - exp(-float(rope.stiff) * delta)
-		var ph: float = rope.phase
-		var wind := Vector3(sin(_t * 1.3 + ph), 0.0, cos(_t * 0.9 + ph * 1.3)) * 2.0 * float(rope.breeze)
-		points[0] = sk * rest[0]
-		prev[0] = points[0]
-		for i in range(1, points.size()):
-			var moving := (points[i] - prev[i]) * keep
-			prev[i] = points[i]
-			points[i] += moving + (gravity + wind) * delta * delta
-			points[i] = points[i].lerp(sk * rest[i], ease_back)
-		for pass_i in 3:
-			for i in range(1, points.size()):
-				var d := (points[i] - points[i - 1]).normalized()
-				# Heavy as they are, they never swing up past MAX_SWING from hanging straight.
-				var lean := d.angle_to(Vector3.DOWN)
-				if lean > MAX_SWING:
-					d = Vector3.DOWN.slerp(d, MAX_SWING / lean)
-				points[i] = points[i - 1] + d * lengths[i - 1]
-		rope.points = points
-		rope.prev = prev
-		var bones: Array[int] = rope.bones
-		for j in bones.size():
-			_aim(bones[j], to_sk * points[j], to_sk * points[j + 1])
+	_ropes = HangingRopes.new(_skeleton, MAX_SWING)
+	_ropes.add_named("pendant_", 0.6, 1.8, 0.15)
+	_ropes.add_named("cloth_", 1.5, 3.0, 1.0)
 
 
 ## Blinks now and then, and holds the lids at the squint otherwise.
@@ -294,12 +228,3 @@ func _turn(bone: int, turn: Quaternion) -> void:
 	var g := _skeleton.get_bone_global_rest(bone).basis.get_rotation_quaternion()
 	var rest := _skeleton.get_bone_rest(bone).basis.get_rotation_quaternion()
 	_skeleton.set_bone_pose_rotation(bone, rest * (g.inverse() * turn * g))
-
-
-## Poses a bone at `from` pointing (its +Y) at `to` (skeleton space), turned from its rest
-## orientation by the shortest rotation.
-func _aim(bone: int, from: Vector3, to: Vector3) -> void:
-	var base := _skeleton.get_bone_global_rest(bone).basis.orthonormalized()
-	var want := (to - from).normalized()
-	var turn := Quaternion(base.y.normalized(), want) if base.y.normalized().dot(want) > -0.999 else Quaternion.IDENTITY
-	_skeleton.set_bone_global_pose(bone, Transform3D(Basis(turn) * base, from))

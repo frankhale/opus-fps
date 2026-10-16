@@ -15,9 +15,9 @@ extends Node3D
 ## You can wade out until the water is about 1 m deep, where invisible walls follow the
 ## coast round. Rocks sit along the shore (the surf foams round them), with a few trees
 ## and bushes on the grass. The shadow cat roams the island, the lynx ranger potters
-## about on it and the arcane eye floats over it. Everything is built when the node enters the tree (also in the editor, apart
-## from the creatures), so the scene file stays tiny. The player starts on the south
-## beach, looking out to sea.
+## about on it, and the arcane eye and a jellyfish float over it. Everything is built
+## when the node enters the tree (also in the editor, apart from the creatures), so the
+## scene file stays tiny. The player starts on the south beach, looking out to sea.
 
 const SEED := 2024
 ## Mean distance from the middle to the waterline, and how far it wanders either way.
@@ -85,6 +85,12 @@ const EYE_INLAND := 16.0
 const LYNX_ANGLE := 0.15
 const LYNX_INLAND := 12.0
 const LYNX_SHORE := 4.0
+## The jellyfish starts this far round the coast from the player's start (radians) and
+## this far inland, and swims anywhere over the island and out over the shallows up to
+## JELLY_OFFSHORE meters past the waterline.
+const JELLY_ANGLE := -0.7
+const JELLY_INLAND := 6.0
+const JELLY_OFFSHORE := 6.0
 
 var _coast := []  # [harmonic, amplitude, phase] for the coastline's wander
 var _noise: FastNoiseLite
@@ -108,6 +114,7 @@ func build() -> void:
 	_place_cat()
 	_place_lynx()
 	_place_eye()
+	_place_jellyfish()
 	if not Engine.is_editor_hint() and ResourceLoader.exists(SURF_SOUND):
 		var surf := AudioStreamPlayer.new()
 		surf.name = "Surf"
@@ -356,6 +363,24 @@ func _place_eye() -> void:
 	eye.wander_radius = COAST_RADIUS
 	eye.can_hover = func(p: Vector3) -> bool: return inland(p.x, p.z) > 0.0
 	add_child(eye)
+
+
+## The jellyfish (scripts/enemies/jellyfish.gd), swimming through the air over the island
+## and the shallows, above the waves when it's out over the sea (at height 0).
+func _place_jellyfish() -> void:
+	if Engine.is_editor_hint():
+		return  # it only runs in the game
+	var angle := PI * 0.5 + JELLY_ANGLE
+	var r := coast_radius(angle) - JELLY_INLAND
+	var x := cos(angle) * r
+	var z := sin(angle) * r
+	var jelly := Jellyfish.new()
+	jelly.name = "Jellyfish"
+	jelly.floor_min = 0.0
+	jelly.position = Vector3(x, maxf(height(x, z), 0.0) + jelly.hover_height, z)
+	jelly.wander_radius = COAST_RADIUS
+	jelly.can_hover = func(p: Vector3) -> bool: return inland(p.x, p.z) > -JELLY_OFFSHORE
+	add_child(jelly)
 
 
 ## Puts the player on the south beach looking out to sea (slightly along the shore),

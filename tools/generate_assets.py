@@ -2672,6 +2672,138 @@ def enemy_lynx_ranger(b):
             b.weigh([v], {f"ear_{side}_0": 1 - w, f"ear_{side}_1": w})
 
 
+# Defined last so adding it didn't reseed (and change) any earlier model.
+@asset("enemies")
+def enemy_jellyfish(b):
+    """A sky jellyfish, about 1.6 m across its bell and 3 m tall with its tentacles, with
+    its origin at the middle of the bell's rim (hover it in game). The domed bell shades
+    from pinkish violet on top through blue round its sides to a glowing orange band
+    (PS1_Glow) above a scalloped rim of pale lappets, with ribs running down it. Under it
+    hang four frilly oral arms, pale lavender and studded with bulbs, curling at their
+    ends, and eight long pale ribbon tentacles from just inside the rim.
+
+    Rigged so it can pulse and its hangings can swing: `body` (the root) carries `bell`,
+    which the game scales to pulse the bell, and every hanging as a chain of bones, top to
+    bottom: `arm_<k>_0` .. `arm_<k>_4` for the oral arms (k = 0 to 3) and `tentacle_<k>_0`
+    .. `tentacle_<k>_3` for the tentacles (k = 0 to 7). Each chain hangs straight down at
+    rest in equal segments, and is skinned smoothly along its bones."""
+    BELL_R, BELL_H = 0.8, 0.72
+    ARM_LEN, ARM_BONES, ARM_ROOT_R = 2.0, 5, 0.13
+    TENT_LEN, TENT_BONES, TENT_ROOT_R = 2.5, 4, 0.62
+    pale = {"white": 3, "lstone": 2, "chrome": 1}
+
+    arm_roots = [Vector((math.cos(a) * ARM_ROOT_R, math.sin(a) * ARM_ROOT_R, 0.12))
+                 for a in (math.radians(45 + 90 * k) for k in range(4))]
+    tent_roots = [Vector((math.cos(a) * TENT_ROOT_R, math.sin(a) * TENT_ROOT_R, 0.03))
+                  for a in (math.radians(22.5 + 45 * k) for k in range(8))]
+
+    def chain_points(root, length, n):
+        return [root + Vector((0, 0, -length * j / n)) for j in range(n + 1)]
+
+    # Skeleton (before any geometry: adding the weight layer invalidates vertices).
+    b.bone("body", (0, 0, 0), (0, 0, 0.4))
+    b.bone("bell", (0, 0, 0), (0, 0, BELL_H), "body")
+    for k, root in enumerate(arm_roots):
+        pts = chain_points(root, ARM_LEN, ARM_BONES)
+        for j in range(ARM_BONES):
+            b.bone(f"arm_{k}_{j}", pts[j], pts[j + 1], "body" if j == 0 else f"arm_{k}_{j - 1}")
+    for k, root in enumerate(tent_roots):
+        pts = chain_points(root, TENT_LEN, TENT_BONES)
+        for j in range(TENT_BONES):
+            b.bone(f"tentacle_{k}_{j}", pts[j], pts[j + 1], "body" if j == 0 else f"tentacle_{k}_{j - 1}")
+
+    def mark():
+        return len(b.bm.verts)
+
+    def since(m):
+        return [v for v in list(b.bm.verts)[m:] if v.is_valid]
+
+    def skin_hanging(m, top, length, bones):
+        """Skins a hanging chain by height: each vertex to the bone at its depth below
+        `top`, blending into the next across each joint."""
+        n = len(bones)
+        for v in since(m):
+            s = min(max((top - v.co.z) / length * n, 0.0), n - 1e-6)
+            j, f = int(s), s - int(s)
+            if f > 0.8 and j + 1 < n:
+                k = (f - 0.8) / 0.4
+                b.weigh([v], {bones[j]: 1 - k, bones[j + 1]: k})
+            elif f < 0.2 and j > 0:
+                k = (0.2 - f) / 0.4
+                b.weigh([v], {bones[j]: 1 - k, bones[j - 1]: k})
+            else:
+                b.weigh([v], {bones[j]: 1.0})
+
+    # The bell: a broad dome over a shallow hollow underneath, in bands from a pinkish
+    # crown through violet to blue round the sides, ribbed with alternating shades, a
+    # glowing orange band low down and pale underneath.
+    def bell_color(f):
+        c = f.calc_center_median()
+        if f.normal.z < -0.3 and c.z < 0.25:
+            return "lstone"  # the underside
+        rib = int((math.degrees(math.atan2(c.y, c.x)) + 371.25) / 22.5) % 2
+        if c.z > 0.62:
+            return "flesh"
+        if c.z > 0.5:
+            return "purple" if rib else "flesh"
+        if c.z > 0.36:
+            return "purple" if rib else "water"
+        return "sky" if rib else "water"
+
+    m = mark()
+    dome = [(BELL_R * math.sin(math.radians(a)), 0.12 + (BELL_H - 0.12) * math.cos(math.radians(a)))
+            for a in (0, 18, 34, 48, 61, 72, 82, 90)]
+    b.lathe(dome + [(0.79, 0.06), (0.74, 0.03), (0.6, 0.08), (0.35, 0.14), (0.0, 0.16)], seg=16,
+            color=bell_color)
+    # The glowing band and the scalloped rim of pale lappets below it.
+    b.lathe([(0.802, 0.135), (0.81, 0.11), (0.795, 0.075)], seg=16, color="orange", glow=True)
+    for k in range(32):
+        a = 2 * math.pi * (k + 0.5) / 32
+        b.ico(0.05, 1, loc=(math.cos(a) * 0.765, math.sin(a) * 0.765, 0.045), scale=(1, 1.1, 0.8),
+              rot=(0, 0, math.degrees(a)), color="white" if k % 2 else "lstone")
+    b.weigh(since(m), {"bell": 1.0})
+
+    # Oral arms: thick, frilly, lumpy columns, studded with bulbs, curling at the ends.
+    for k, root in enumerate(arm_roots):
+        m = mark()
+        out = Vector((root.x, root.y, 0)).normalized()
+        side = Vector((-out.y, out.x, 0))
+        pts, radii = [], []
+        for i in range(13):
+            t = i / 12
+            curl = smoothstep(0.75, 1.0, t)
+            p = root + Vector((0, 0, -ARM_LEN * t)) + out * (0.05 * math.sin(t * 9 + k) + 0.12 * t + 0.2 * curl) \
+                + side * 0.06 * math.sin(t * 7 + k * 2) + Vector((0, 0, 0.18 * curl))
+            pts.append(p)
+            radii.append(0.12 * (1 - 0.6 * t) if i < 12 else 0.0)
+        rings = b.tube(pts, radii, seg=6, color=pale)
+        b.jitter([v for r in rings[1:-1] for v in r], 0.02)
+        for i in range(1, 12):
+            for q in range(3 if i < 9 else 2):
+                a = b.rng.uniform(0, 2 * math.pi)
+                d = out * math.cos(a) + side * math.sin(a)
+                size = b.rng.uniform(0.04, 0.075) * (1.1 - 0.4 * i / 12)
+                b.ico(size, 1, loc=pts[i] + d * radii[i] * 0.9 + Vector((0, 0, b.rng.uniform(-0.06, 0.06))),
+                      color={"white": 2, "sky": 1, "chrome": 1})
+        skin_hanging(m, root.z, ARM_LEN, [f"arm_{k}_{j}" for j in range(ARM_BONES)])
+
+    # Tentacles: long pale ribbons from just inside the rim, wavering a little, each with a
+    # few small beads near its end.
+    for k, root in enumerate(tent_roots):
+        m = mark()
+        out = Vector((root.x, root.y, 0)).normalized()
+        side = Vector((-out.y, out.x, 0))
+        length = TENT_LEN * b.rng.uniform(0.85, 1.0)
+        pts = [root + Vector((0, 0, -length * i / 10)) + side * 0.04 * math.sin(i * 1.3 + k)
+               + out * 0.03 * math.sin(i * 0.9 + k * 1.7) for i in range(11)]
+        b.tube(pts, [0.024 * (1 - 0.6 * i / 10) if i < 10 else 0.0 for i in range(11)], seg=4,
+               color={"bone": 2, "white": 2, "lsand": 1})
+        for i in (6, 8, 9):
+            if b.rng.random() < 0.6:
+                b.ico(0.028, 0, loc=pts[i] + side * 0.02, color={"white": 1, "sky": 1})
+        skin_hanging(m, root.z, TENT_LEN, [f"tentacle_{k}_{j}" for j in range(TENT_BONES)])
+
+
 # ---------------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------------
