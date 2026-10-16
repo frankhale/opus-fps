@@ -349,6 +349,8 @@ def showcase(cam, sun):
     place("enemy_floating_eye", -2.5, 1.5, lift=2.6, rot=20)
     place("enemy_shadow_cat", -1.8, -10.5, rot=25)
     place("enemy_arcane_eye", 5.5, 7.5, lift=3.0, rot=-20)
+    place("enemy_lynx_ranger", 2.2, -11.2, rot=-20)
+    place("enemy_jellyfish", 9.5, 1.5, lift=3.9, rot=15)
     place("pickup_medkit", -0.5, -6.5, rot=20)
     place("pickup_ammo_shells", 0.6, -5.2, rot=-30)
     place("powerup_quad_damage", 0, -1.5, lift=0.3)
