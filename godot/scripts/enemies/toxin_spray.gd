@@ -127,11 +127,11 @@ func _launch_velocity(from: Vector3, to: Vector3) -> Vector3:
 
 
 func _jitter(v: Vector3) -> Vector3:
-	var basis := Basis.looking_at(v.normalized())
+	var aim := Basis.looking_at(v.normalized())
 	var r := sqrt(randf()) * deg_to_rad(spread)
 	var a := randf() * TAU
 	var local := Vector3(sin(r) * cos(a) + _wobble.x, sin(r) * sin(a) + _wobble.y, -1.0).normalized()
-	return basis * local * speed * randf_range(0.93, 1.05)
+	return aim * local * speed * randf_range(0.93, 1.05)
 
 
 func _on_drop_hit(collider: Object, at: Vector3, normal: Vector3, v: Vector3) -> void:

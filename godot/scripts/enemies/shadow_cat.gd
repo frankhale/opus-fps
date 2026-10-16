@@ -494,7 +494,7 @@ func _setup_rig() -> void:
 		return
 	_skeleton = found[0]
 	var sk := _skeleton
-	var rest := func(name: String) -> Vector3: return sk.get_bone_global_rest(sk.find_bone(name)).origin
+	var rest := func(bone: String) -> Vector3: return sk.get_bone_global_rest(sk.find_bone(bone)).origin
 	# Where planted paws stand, from the planted left legs (the right foreleg is raised
 	# at rest), mirrored for the right.
 	var front_paw: Vector3 = rest.call("paw_fl")

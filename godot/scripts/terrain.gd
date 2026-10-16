@@ -96,10 +96,10 @@ func height(x: float, z: float) -> float:
 	var hills := _noise.get_noise_2d(x, z) * 1.6 * amp
 	var edge := maxf(absf(x), absf(z))
 	var rim := smoothstep(extent() - 30.0, extent() + 2.0, edge) * rim_height
-	var height := hills * _flatness(x, z) + rim
+	var h := hills * _flatness(x, z) + rim
 	if not is_nan(creek_z):
-		height *= smoothstep(creek_half_width, creek_half_width + flat_falloff, absf(z - creek_z))
-	return height
+		h *= smoothstep(creek_half_width, creek_half_width + flat_falloff, absf(z - creek_z))
+	return h
 
 
 ## 0 inside flat zones, 1 in open country, `road_hill_scale` on the roads.
@@ -136,6 +136,7 @@ func build() -> void:
 			var entry := tiles[j * n + i].split(":")
 			var origin := Vector3((i - half) * TILE, 0.0, (j - half) * TILE)
 			var xf := Transform3D(Basis(Vector3.UP, deg_to_rad(float(entry[1]))), origin)
+			@warning_ignore("integer_division")
 			var key := Vector2i(i / CHUNK, j / CHUNK)
 			if not chunks.has(key):
 				chunks[key] = {}
@@ -203,7 +204,7 @@ func _tile_surfaces(tile_name: String) -> Array:
 	if _tile_cache.has(tile_name):
 		return _tile_cache[tile_name]
 	var surfaces := []
-	var remap: Dictionary = UNIFORM_ROAD_SWATCH if tile_name in ROAD_TILES else UNIFORM_SWATCH
+	var swatches: Dictionary = UNIFORM_ROAD_SWATCH if tile_name in ROAD_TILES else UNIFORM_SWATCH
 	var inst: Node3D = load("res://assets/terrain/%s.glb" % tile_name).instantiate()
 	for mi: MeshInstance3D in inst.find_children("*", "MeshInstance3D", true, false):
 		var xf := mi.transform
@@ -223,7 +224,7 @@ func _tile_surfaces(tile_name: String) -> Array:
 				var vi := idx[k] if idx.size() > 0 else k
 				ov.append(xf * v[vi])
 				on.append(xf.basis * nr[vi])
-				ouv.append(_uniform_uv(uv[vi], remap) if uniform_ground and palette else uv[vi])
+				ouv.append(_uniform_uv(uv[vi], swatches) if uniform_ground and palette else uv[vi])
 			surfaces.append([_ground_material(mi.get_active_material(s)), ov, on, ouv])
 	inst.free()
 	_tile_cache[tile_name] = surfaces
@@ -246,8 +247,8 @@ func _ground_material(mat: Material) -> Material:
 
 
 ## Moves a UV in a dark or light ground swatch over to its base shade's swatch.
-func _uniform_uv(uv: Vector2, remap: Dictionary) -> Vector2:
+func _uniform_uv(uv: Vector2, swatches: Dictionary) -> Vector2:
 	var col := floori(uv.x * 8.0)
-	if floori(uv.y * 4.0) != 0 or not remap.has(col):
+	if floori(uv.y * 4.0) != 0 or not swatches.has(col):
 		return uv
-	return Vector2(uv.x + (remap[col] - col) / 8.0, uv.y)
+	return Vector2(uv.x + (swatches[col] - col) / 8.0, uv.y)

@@ -223,7 +223,7 @@ func _animate_legs(delta: float) -> void:
 		return
 	var sk := _skeleton.global_transform
 	var to_sk := sk.affine_inverse()
-	var scale := sk.basis.get_scale().x
+	var size := sk.basis.get_scale().x
 	var flat_v := Vector3(velocity.x, 0.0, velocity.z)
 	var moving := flat_v.length()
 	var step_t := step_time * clampf(4.0 / maxf(moving, 2.5), 0.8, 1.6)
@@ -245,9 +245,9 @@ func _animate_legs(delta: float) -> void:
 		var off: Vector3 = home - leg.foot
 		off.y = 0.0
 		if leg.t >= 1.0:
-			if off.length() > stride * scale * 3.5:
+			if off.length() > stride * size * 3.5:
 				leg.foot = home  # knocked far out of place: just put it down
-			elif off.length() > stride * scale and not stepping[1 - leg.set]:
+			elif off.length() > stride * size and not stepping[1 - leg.set]:
 				leg.from = leg.foot
 				leg.to = home
 				leg.t = 0.0
@@ -256,7 +256,7 @@ func _animate_legs(delta: float) -> void:
 			leg.to = home  # keep aiming at the moving resting spot
 			leg.t = minf(leg.t + delta / step_t, 1.0)
 			var e: float = leg.t * leg.t * (3.0 - 2.0 * leg.t)
-			leg.foot = (leg.from as Vector3).lerp(leg.to, e) + Vector3.UP * sin(leg.t * PI) * step_height * scale
+			leg.foot = (leg.from as Vector3).lerp(leg.to, e) + Vector3.UP * sin(leg.t * PI) * step_height * size
 			bob += sin(leg.t * PI)
 			if leg.t >= 1.0 and leg.set == 0 and moving > 2.0 and randf() < 0.5:
 				_play_step()

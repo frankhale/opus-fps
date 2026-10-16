@@ -74,8 +74,8 @@ func explode() -> void:
 
 ## The look of a fuel blast at `center`, `size` times a gas can's: the weapon Explosion,
 ## a rolling fireball, shrapnel in `shrapnel_color`, and burning fuel spilled on the
-## ground below (if it is near), with a black smoke column, for burn_time seconds.
-static func fuel_blast(parent: Node3D, center: Vector3, size: float, burn_time: float, fade_time: float,
+## ground below (if it is near), with a black smoke column, for `burn` seconds.
+static func fuel_blast(parent: Node3D, center: Vector3, size: float, burn: float, fade: float,
 		shrapnel_color := Color(0.6, 0.06, 0.04)) -> void:
 	var blast := Explosion.new()
 	blast.size = 1.8 * size
@@ -101,8 +101,8 @@ static func fuel_blast(parent: Node3D, center: Vector3, size: float, burn_time: 
 	# right away (a lambda of a freed object never runs).
 	var t := fx.create_tween()
 	if ground:
-		t.tween_interval(burn_time - fade_time)
-		t.tween_property(smoke, "amount_ratio", 0.0, fade_time)
+		t.tween_interval(burn - fade)
+		t.tween_property(smoke, "amount_ratio", 0.0, fade)
 		t.tween_interval(smoke.lifetime)  # the last puffs drift off
 	else:
 		t.tween_interval(2.0)
@@ -116,7 +116,7 @@ static func fuel_blast(parent: Node3D, center: Vector3, size: float, burn_time: 
 	fire.light_range = 8.0 * size
 	parent.add_child(fire)
 	fire.global_position = ground.position
-	fire.burn_out(burn_time - fade_time, fade_time)
+	fire.burn_out(burn - fade, fade)
 
 
 ## The blast's force at `at`: hurts the player and enemies within `radius` (`damage` at

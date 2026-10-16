@@ -186,10 +186,10 @@ func _ground_y() -> float:
 func _setup_ropes() -> void:
 	var groups := {}
 	for i in _skeleton.get_bone_count():
-		var name := _skeleton.get_bone_name(i)
-		if name.begins_with("pendant_") or name.begins_with("cloth_"):
-			var cut := name.rfind("_")
-			groups.get_or_add(name.substr(0, cut), {})[int(name.substr(cut + 1))] = i
+		var bone := _skeleton.get_bone_name(i)
+		if bone.begins_with("pendant_") or bone.begins_with("cloth_"):
+			var cut := bone.rfind("_")
+			groups.get_or_add(bone.substr(0, cut), {})[int(bone.substr(cut + 1))] = i
 	var sk := _skeleton.global_transform
 	for key: String in groups:
 		var bones: Array[int] = []

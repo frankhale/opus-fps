@@ -67,14 +67,14 @@ func _ready() -> void:
 ## canvas on a 1440p screen, 3 screen pixels is 1.5 units), which stretch_shrink, being
 ## whole-number only, can't do; so the container is scaled instead.
 func _apply_resolution() -> void:
-	var visible := get_viewport().get_visible_rect().size
-	var screen_per_unit := float(get_window().size.y) / visible.y
+	var view_size := get_viewport().get_visible_rect().size
+	var screen_per_unit := float(get_window().size.y) / view_size.y
 	var pixel := maxf(1.0, roundf(get_window().size.y / float(target_lines))) if _ps1_enabled else 1.0
 	var scale_units := maxf(pixel / screen_per_unit, 1.0)
 	container.stretch_shrink = 1
 	container.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	container.scale = Vector2.ONE * scale_units
-	container.size = (visible / scale_units).ceil()
+	container.size = (view_size / scale_units).ceil()
 	container.material = _post if _ps1_enabled else null
 
 
