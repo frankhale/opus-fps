@@ -2294,6 +2294,384 @@ def barbed_wire(b):
         spike(p1, d.cross(u), d)
 
 
+# Defined last so adding it didn't reseed (and change) any earlier model.
+@asset("enemies")
+def enemy_lynx_ranger(b):
+    """Chibi lynx kit in a ranger's coat, faces -Y, about 1.7 m tall to its ear tips:
+    an oversized head with huge splayed ears (dark, pink inside, fringed with tan fur and
+    tipped dark purple), half-lidded amber eyes and a smug little smirk, a cream muzzle
+    and cheek fluff, and a dark crest with tan locks. It wears a navy coat, open at the
+    front over grey legs, with gold edging and a scalloped gold hem, a rolled collar over
+    a white shirt, a gold medallion on its chest, a leather bandolier, a hip belt with a
+    gold buckle and pouches, and leather shoulder guards. Furry dark sleeves with navy
+    bracers end in white paws; it stands on big grey toed feet.
+
+    Rigged for animation (rest pose as modeled, arms hanging). Sides are its own: l is +X.
+      hips (root, at the waist) > chest > head > ear_<side>_0 > ear_<side>_1
+      chest > arm_<side>_0 (shoulder to elbow) > arm_<side>_1 (to the wrist) > hand_<side>
+      hips > leg_<side>_0 (hip to knee) > leg_<side>_1 (to the ankle) > foot_<side>
+    The coat's skirt, belt and pouches follow `hips`; the torso blends from `hips` to
+    `chest` up the waist, and the collar, straps, medallion and shoulder guards follow
+    `chest`. Everything on the head follows `head`, and joints blend across neighbours."""
+    navy = {"dwater": 3, "water": 1}
+    gold = "yellow"
+    leather = {"dbark": 2, "wood": 1}
+    dark_fur = {"dstone": 2, "gunmetal": 1, "stone": 1}
+    tan_fur = {"lsand": 2, "sand": 2, "bone": 1}
+
+    def spike(p, d, length, width, color):
+        """A tuft of fur: a four-sided cone from p, `length` along d."""
+        p, d = Vector(p), Vector(d).normalized()
+        return b.limb(p, p + d * length, width, 0, 4, color)
+
+    # Layout shared by the skeleton and the mesh.
+    hc, hr = Vector((0, -0.02, 1.04)), Vector((0.27, 0.23, 0.22))  # the head
+
+    def on_head(u, depth=1.0):
+        u = Vector(u).normalized()
+        return hc + Vector((u.x * hr.x, u.y * hr.y, u.z * hr.z)) * depth
+
+    sides = {"l": 1, "r": -1}
+    ears = {side: (on_head((s * 0.55, 0.12, 0.8), 0.85), (-14, s * 48, 0)) for side, s in sides.items()}
+    arms = {side: [Vector((s * 0.215, 0.0, 0.76)), Vector((s * 0.275, -0.03, 0.6)), Vector((s * 0.285, -0.07, 0.47)),
+                   Vector((s * 0.29, -0.1, 0.36))] for side, s in sides.items()}
+    legs = {side: [Vector((s * 0.09, 0.0, 0.42)), Vector((s * 0.1, -0.01, 0.24)), Vector((s * 0.105, -0.03, 0.09)),
+                   Vector((s * 0.11, -0.17, 0.04))] for side, s in sides.items()}
+
+    # Skeleton (before any geometry: adding the weight layer invalidates vertices).
+    b.bone("hips", (0, 0, 0.42), (0, 0, 0.6))
+    b.bone("chest", (0, 0, 0.6), (0, 0, 0.84), "hips")
+    b.bone("head", (0, -0.02, 0.86), (0, -0.02, 1.2), "chest")
+    for side, (base, rot) in ears.items():
+        mid, tip = M(base, rot) @ Vector((0, 0, 0.24)), M(base, rot) @ Vector((0, 0, 0.66))
+        b.bone(f"ear_{side}_0", base, mid, "head")
+        b.bone(f"ear_{side}_1", mid, tip, f"ear_{side}_0")
+    for side, j in arms.items():
+        b.bone(f"arm_{side}_0", j[0], j[1], "chest")
+        b.bone(f"arm_{side}_1", j[1], j[2], f"arm_{side}_0")
+        b.bone(f"hand_{side}", j[2], j[3], f"arm_{side}_1")
+    for side, j in legs.items():
+        b.bone(f"leg_{side}_0", j[0], j[1], "hips")
+        b.bone(f"leg_{side}_1", j[1], j[2], f"leg_{side}_0")
+        b.bone(f"foot_{side}", j[2], j[3], f"leg_{side}_1")
+
+    def mark():
+        return len(b.bm.verts)
+
+    def since(m):
+        """The vertices made since mark() returned m."""
+        return [v for v in list(b.bm.verts)[m:] if v.is_valid]
+
+    def skin(m, bone):
+        b.weigh(since(m), {bone: 1.0})
+
+    def skin_waist(m):
+        """Follows `hips` below the waist and `chest` above it, blending between."""
+        for v in since(m):
+            w = smoothstep(0.55, 0.68, v.co.z)
+            b.weigh([v], {"hips": 1 - w, "chest": w})
+
+    def skin_chain(m, joints, bones):
+        """Skins to the nearest bone of a chain, blending across each joint."""
+        for v in since(m):
+            best = None
+            for i, (a, c) in enumerate(zip(joints, joints[1:])):
+                d = c - a
+                t = min(max((v.co - a).dot(d) / d.length_squared, 0.0), 1.0)
+                dist = (v.co - (a + d * t)).length
+                if best is None or dist < best[0]:
+                    best = (dist, i, t)
+            _, i, t = best
+            w = {bones[i]: 1.0}
+            if t > 0.85 and i + 1 < len(bones):
+                k = (t - 0.85) / 0.3
+                w = {bones[i]: 1 - k, bones[i + 1]: k}
+            elif t < 0.15 and i > 0:
+                k = (0.15 - t) / 0.3
+                w = {bones[i]: 1 - k, bones[i - 1]: k}
+            b.weigh([v], w)
+
+    def shell(rows, half_open, seg, thick, color, lower=None):
+        """A coat panel: a thick surface of revolution round Z through `rows` of
+        (z, radius) from top to bottom, open at the front by `half_open` radians each side
+        of -Y (0: closed all round). lower(angle) drops the last two rows (the hem and the
+        band above it), for a shaped hem."""
+        bm, closed = b.bm, half_open <= 0
+        n = seg if closed else seg + 1
+        angles = [half_open + (2 * math.pi - 2 * half_open) * k / seg for k in range(n)]
+        outer, inner = [], []
+        for i, (z, r) in enumerate(rows):
+            o, n_ = [], []
+            for a in angles:
+                zz = z - (lower(a) if lower and i >= len(rows) - 2 else 0.0)
+                d = Vector((math.sin(a), -math.cos(a), 0))
+                o.append(bm.verts.new(b.P @ (d * r + Vector((0, 0, zz)))))
+                n_.append(bm.verts.new(b.P @ (d * (r - thick) + Vector((0, 0, zz)))))
+            outer.append(o)
+            inner.append(n_)
+        faces = []
+        for i in range(len(rows) - 1):
+            for k in range(seg):
+                k1 = (k + 1) % n
+                faces.append(bm.faces.new((outer[i][k], outer[i][k1], outer[i + 1][k1], outer[i + 1][k])))
+                faces.append(bm.faces.new((inner[i][k], inner[i + 1][k], inner[i + 1][k1], inner[i][k1])))
+        for row_o, row_i in ((outer[0], inner[0]), (outer[-1], inner[-1])):
+            for k in range(seg):
+                k1 = (k + 1) % n
+                faces.append(bm.faces.new((row_o[k], row_i[k], row_i[k1], row_o[k1])))
+        if not closed:
+            for k in (0, n - 1):
+                for i in range(len(rows) - 1):
+                    faces.append(bm.faces.new((outer[i][k], outer[i + 1][k], inner[i + 1][k], inner[i][k])))
+        bmesh.ops.recalc_face_normals(bm, faces=faces)
+        return b.paint([v for r in outer + inner for v in r], color)
+
+    # Legs and big toed feet, mostly hidden under the coat.
+    for side, s in sides.items():
+        m = mark()
+        b.tube(legs[side][:3], [0.075, 0.068, 0.062], seg=7, color={"lstone": 2, "white": 1})
+        b.ico(0.09, 1, loc=(s * 0.11, -0.07, 0.055), scale=(1.0, 1.35, 0.62), color={"lstone": 2, "white": 2})
+        for t in (-1, 0, 1):
+            b.ico(0.032, 1, loc=(s * 0.11 + t * 0.042, -0.18, 0.04), scale=(1, 1.1, 0.9),
+                  color={"white": 2, "lstone": 1})
+        skin_chain(m, legs[side], [f"leg_{side}_0", f"leg_{side}_1", f"foot_{side}"])
+
+    # The coat's skirt, open at the front, flaring from the hips to a scalloped hem that
+    # hangs lower behind. The hem band and the front edges are gold, the lining dark.
+    def hem_drop(a):
+        back = (1 - math.cos(a)) / 2
+        return 0.05 * back + 0.035 * abs(math.sin(a * 5))
+
+    def skirt_color(f):
+        c = f.calc_center_median()
+        a = math.atan2(c.x, -c.y)
+        radial = Vector((c.x, c.y, 0)).normalized()
+        if f.normal.dot(radial) < -0.3:
+            return "dwater"  # lining
+        if c.z < 0.17 - hem_drop(a) or abs(a) < 0.44:
+            return gold
+        return navy
+
+    skirt = [(0.5, 0.215), (0.34, 0.28), (0.18, 0.35), (0.13, 0.37)]
+    m = mark()
+    shell(skirt, 0.36, 22, 0.022, skirt_color, lower=hem_drop)
+    skin(m, "hips")
+
+    def skirt_r(z):
+        """The skirt's radius at height z (above the hem)."""
+        for (z0, r0), (z1, r1) in zip(skirt, skirt[1:]):
+            if z1 <= z <= z0:
+                return r0 + (r1 - r0) * (z0 - z) / (z0 - z1)
+        return skirt[0][1]
+
+    # Torso, a little deeper than wide, with gold lapel edges down to the waist.
+    m = mark()
+    b.lathe([(0.0, 0.42), (0.205, 0.44), (0.215, 0.6), (0.195, 0.74), (0.14, 0.84), (0.0, 0.87)],
+                    seg=12, scale=(1, 0.88, 1), color=navy)
+    for s in (-1, 1):
+        b.beam((s * 0.11, -0.16, 0.81), (s * 0.035, -0.19, 0.5), 0.026, 0.02, color=gold)
+    b.prism(0.12, 0.02, 0.12, loc=(0, -0.155, 0.86), rot=(-90 + 15, 180, 0), color="white")  # shirt front
+    skin_waist(m)
+
+    # A rolled collar of the coat, sitting on the shoulders round the neck.
+    m = mark()
+    b.lathe([(0.12, 0.82), (0.2, 0.83), (0.235, 0.875), (0.2, 0.93), (0.14, 0.94), (0.12, 0.9)],
+            seg=12, scale=(1, 0.92, 1), color=navy)
+    skin(m, "chest")
+
+    # Hip belt with a big gold buckle and a pouch at each side.
+    m = mark()
+    b.lathe([(0.212, 0.4), (0.222, 0.41), (0.222, 0.47), (0.212, 0.48)], seg=12, scale=(1, 0.9, 1),
+            color=leather)
+    b.box((0.09, 0.02, 0.07), (0, -0.205, 0.44), color=gold)
+    b.box((0.05, 0.022, 0.035), (0, -0.207, 0.44), color="dbark")
+    for s in (-1, 1):
+        b.box((0.09, 0.08, 0.11), (s * 0.22, -0.11, 0.38), rot=(0, 0, s * 35), color=leather, cuts=1)
+        b.box((0.095, 0.085, 0.04), (s * 0.22, -0.11, 0.43), rot=(0, 0, s * 35), color="wood")
+        b.box((0.025, 0.012, 0.025), (s * 0.245, -0.165, 0.415), rot=(0, 0, s * 35), color=gold)
+    skin(m, "hips")
+
+    # A bandolier from the right shoulder to the left hip, studded gold, and a strap
+    # from the left shoulder holding the medallion.
+    m = mark()
+    strap = [(-0.17, -0.1, 0.8), (-0.1, -0.18, 0.7), (0.06, -0.19, 0.58), (0.19, -0.13, 0.48)]
+    for p0, p1 in zip(strap, strap[1:]):
+        b.beam(p0, p1, 0.05, 0.018, color=leather)
+    for p in strap[1:3]:
+        b.box((0.03, 0.02, 0.03), Vector(p) + Vector((0, -0.012, 0)), color=gold)
+    b.beam((0.17, -0.1, 0.8), (0.05, -0.19, 0.7), 0.04, 0.016, color=leather)
+    skin_waist(m)
+
+    # The medallion: a gold-rimmed navy disc with a gold leaf on it.
+    m = mark()
+    b.limb((0, -0.16, 0.68), (0, -0.215, 0.68), 0.078, 0.078, seg=12, color=gold)
+    b.limb((0, -0.21, 0.68), (0, -0.222, 0.68), 0.06, 0.06, seg=12, color="dwater")
+    with b.at(loc=(0, -0.224, 0.68)):
+        b.box((0.018, 0.01, 0.07), (0, 0, 0.0), color=gold)
+        for s in (-1, 1):
+            b.box((0.014, 0.01, 0.05), (s * 0.022, 0, 0.008), rot=(0, s * 40, 0), color=gold)
+            b.box((0.012, 0.01, 0.035), (s * 0.02, 0, -0.028), rot=(0, s * -50, 0), color=gold)
+    skin(m, "chest")
+
+    # The back of the coat: a gold diamond and gold arcs above the hem.
+    m = mark()
+    b.box((0.05, 0.02, 0.05), (0, skirt_r(0.39), 0.39), rot=(0, 45, 0), color=gold)
+    for k in range(-2, 3):
+        a0, a1 = math.pi + (k - 0.5) * 0.42, math.pi + (k + 0.5) * 0.42
+        pts = []
+        for t in (0.0, 0.5, 1.0):
+            a = a0 + (a1 - a0) * t
+            z = 0.27 + (0.035 if t == 0.5 else 0.0)
+            r = skirt_r(z) + 0.004
+            pts.append(Vector((math.sin(a) * r, -math.cos(a) * r, z)))
+        for p0, p1 in zip(pts, pts[1:]):
+            b.beam(p0, p1, 0.016, 0.012, color=gold)
+        b.ico(0.014, 0, loc=pts[0], color=gold)
+    skin(m, "hips")
+
+    # Shoulder guards with a gold buckle, then furry dark sleeves with navy bracers
+    # (gold-edged) and tan tufts, ending in white paws.
+    for side, s in sides.items():
+        m = mark()
+        b.ico(1.0, 1, loc=(s * 0.21, 0.0, 0.79), scale=(0.11, 0.12, 0.075), color=leather)
+        b.box((0.035, 0.03, 0.025), (s * 0.24, -0.09, 0.8), color=gold)
+        skin(m, "chest")
+        m = mark()
+        sh, el, wr = arms[side][:3]
+        b.tube([sh, el, wr], [0.08, 0.07, 0.066], seg=7, color=dark_fur)
+        b.limb(el.lerp(wr, 0.3), wr, 0.077, 0.074, seg=7, color=navy)
+        b.limb(wr + (el - wr).normalized() * 0.01, wr - (el - wr).normalized() * 0.005, 0.081, 0.081, seg=7, color=gold)
+        for t in (0.25, 0.55):
+            p = sh.lerp(el, t)
+            spike(p + Vector((s * 0.06, 0, 0)), (s * 1, 0.2, -0.5), 0.09, 0.035, tan_fur)
+        spike(el + Vector((s * 0.06, 0.02, 0)), (s * 1, 0.3, -0.2), 0.08, 0.03, tan_fur)
+        for k in range(4):
+            a = 2 * math.pi * k / 4 + 0.4
+            d = Vector((math.cos(a), math.sin(a), 0))
+            spike(wr + d * 0.05 + Vector((0, 0, -0.01)), d + Vector((0, 0, -0.6)), 0.06, 0.03, "white")
+        b.ico(0.075, 1, loc=(s * 0.29, -0.085, 0.41), scale=(1, 1.05, 0.95), color={"white": 3, "lstone": 1})
+        for t in (-1, 0, 1):
+            b.ico(0.027, 0, loc=(s * 0.29 + t * 0.03, -0.15, 0.385), color="white")
+        skin_chain(m, arms[side], [f"arm_{side}_0", f"arm_{side}_1", f"hand_{side}"])
+
+    # Head: a big ellipsoid, shaded by region: cream muzzle and cheeks, tan round the
+    # eyes, a dark crown and a tan-brown back.
+    head_start = mark()
+
+    def face(x, z, proud=0.0):
+        """Point on the front of the head at (x, z) and the head's normal there."""
+        k = 1 - (x / hr.x) ** 2 - ((z - hc.z) / hr.z) ** 2
+        p = Vector((x, hc.y - hr.y * math.sqrt(max(k, 0.0)), z))
+        n = Vector(((p.x - hc.x) / hr.x ** 2, (p.y - hc.y) / hr.y ** 2, (p.z - hc.z) / hr.z ** 2)).normalized()
+        return p + n * proud, n
+
+    def head_color(f):
+        c = f.calc_center_median() - hc
+        u = Vector((c.x / hr.x, c.y / hr.y, c.z / hr.z))
+        if u.y > 0.25:
+            return {"sand": 3, "lsand": 1}
+        if u.y < -0.5 and u.z < -0.05:
+            return {"white": 3, "bone": 1}
+        if u.y < -0.3 and 0.15 < u.z < 0.5 and 0.2 < abs(u.x) < 0.6:
+            return {"white": 2, "bone": 1}  # brow patches
+        if u.y < -0.35 and u.z < 0.15:
+            return {"sand": 2, "lsand": 1} if abs(u.x) > 0.2 else {"bone": 2, "white": 1}
+        return dark_fur
+
+    b.ico(1.0, 2, loc=hc, scale=hr, color=head_color, jit=0.006)
+
+    # Muzzle, nose and a lopsided smirk.
+    mc, mr = Vector((0, -0.215, 0.945)), Vector((0.12, 0.075, 0.07))
+    b.ico(1.0, 1, loc=mc, scale=mr, color={"white": 3, "bone": 1})
+    b.ico(1.0, 1, loc=(0, -0.29, 0.975), scale=(0.032, 0.022, 0.022), color={"dirt": 2, "dbark": 1})
+    smirk = []
+    for x, dz in ((-0.05, 0.0), (-0.02, -0.012), (0.015, -0.01), (0.055, 0.01)):
+        k = 1 - (x / mr.x) ** 2 - ((0.925 + dz - mc.z) / mr.z) ** 2
+        smirk.append(Vector((x, mc.y - mr.y * math.sqrt(max(k, 0.0)) - 0.003, 0.925 + dz)))
+    b.tube(smirk, [0.004, 0.007, 0.007, 0.004], seg=4, color="dbark")
+
+    # Half-lidded amber eyes: a gold iris, a big pupil and a glint, under a heavy dark lid
+    # lined in black.
+    for s in (-1, 1):
+        p, n = face(s * 0.115, 1.015)
+        b.limb(p - n * 0.012, p + n * 0.012, 0.064, 0.058, seg=10, color="bone")
+        b.limb(p + n * 0.006, p + n * 0.016, 0.05, 0.046, seg=10, color=gold)
+        b.limb(p + n * 0.012, p + n * 0.02, 0.03, 0.026, seg=8, color="black")
+        b.ico(0.011, 1, loc=p + n * 0.022 + Vector((s * -0.012, 0, 0.014)), color="white")
+        lid = [face(s * x, 1.015 + z, 0.012)[0] for x, z in ((0.05, 0.022), (0.1, 0.045), (0.15, 0.04), (0.185, 0.02))]
+        b.tube(lid, [0.018, 0.032, 0.03, 0.012], seg=6, color=dark_fur)
+        liner = [face(s * x, 1.015 + z, 0.018)[0] for x, z in ((0.05, 0.012), (0.1, 0.024), (0.15, 0.022), (0.2, 0.03))]
+        b.tube(liner, [0.008, 0.011, 0.01, 0.0], seg=4, color="black")
+        # A white brow tuft above each eye.
+        q, m = face(s * 0.11, 1.1)
+        spike(q, m + Vector((s * 0.6, 0, 0.5)), 0.08, 0.035, {"white": 2, "bone": 1})
+
+    # Cheek fluff sweeping out and down at the sides of the face.
+    for s in (-1, 1):
+        for k in range(5):
+            z = 0.9 + 0.03 * k + b.rng.uniform(-0.01, 0.01)
+            q = on_head((s * 0.95, -0.3 + b.rng.uniform(-0.1, 0.1), (z - hc.z) / hr.z), 0.93)
+            d = Vector((s * 1, b.rng.uniform(-0.4, 0.1), -0.45 + 0.15 * k + b.rng.uniform(-0.15, 0.15)))
+            spike(q, d, b.rng.uniform(0.09, 0.16), b.rng.uniform(0.05, 0.065), {"white": 2, "lsand": 2, "sand": 1})
+
+    # A dark crest on top streaked with tan, tan locks falling over the brow, and tan
+    # fluff on the back of the head.
+    for k in range(7):
+        x = -0.36 + 0.12 * k
+        q = on_head((x, b.rng.uniform(-0.15, 0.25), 1.0), 0.93)
+        d = Vector((x * 1.2, 0.5 + b.rng.uniform(-0.3, 0.3), 1.0))
+        spike(q, d, b.rng.uniform(0.08, 0.14), b.rng.uniform(0.05, 0.065),
+              tan_fur if k in (2, 5) else {"dstone": 2, "purple": 1, "gunmetal": 1})
+    for x in (-0.07, 0.0, 0.08):
+        q = on_head((x * 3, -0.6, 0.75), 0.97)
+        spike(q, (x * 2, -0.7, -0.55), 0.1, 0.04, tan_fur)
+    for k in range(5):
+        a = math.radians(-60 + 120 * k / 4)
+        q = on_head((math.sin(a), 0.8, -0.1 + 0.2 * (k % 2)), 0.93)
+        spike(q, (math.sin(a) * 0.6, 1.0, -0.5), b.rng.uniform(0.07, 0.11), 0.05, {"sand": 2, "lsand": 1})
+
+    skin(head_start, "head")
+
+    # Huge ears splayed up and out: dark outside with a tan-brown base, pink inside,
+    # fringed with long tan fur along their edges and tipped with dark purple tufts.
+    # Each bends a third of the way up: below that it follows ear_0, above it ear_1.
+    for side, s in sides.items():
+        base, rot = ears[side]
+        m = mark()
+        with b.at(loc=base, rot=rot):
+            prof = [(0.17, 0.0), (0.2, 0.16), (0.15, 0.36), (0.07, 0.54), (0.0, 0.66)]
+            to_local = (b.P).inverted()
+
+            def ear_color(f):
+                z = (to_local @ f.calc_center_median()).z
+                if z > 0.45:
+                    return {"purple": 2, "dstone": 1}
+                return {"dstone": 1, "purple": 1, "dirt": 1} if z > 0.3 else {"sand": 3, "lsand": 1}
+
+            b.lathe(prof, seg=7, scale=(1, 0.3, 1), color=ear_color)
+            b.lathe([(0.12, 0.05), (0.15, 0.17), (0.1, 0.35), (0.0, 0.52)], seg=6,
+                    loc=(0, -0.042, 0), scale=(1, 0.2, 1), color="flesh")
+            for i in range(1, 8):
+                for edge in (-1, 1):
+                    z = 0.07 * i + b.rng.uniform(-0.02, 0.02)
+                    r = next(p[0] + (q[0] - p[0]) * (z - p[1]) / (q[1] - p[1])
+                             for p, q in zip(prof, prof[1:]) if p[1] <= z <= q[1])
+                    # The outer edge (away from the head) carries the long fringe.
+                    outer = edge == 1
+                    length = (0.08 + 0.1 * math.sin(math.pi * i / 8)) * (1.0 if outer else 0.6)
+                    length *= b.rng.uniform(0.75, 1.2)
+                    spike((edge * r * 0.95, 0, z), (edge * 0.8, b.rng.uniform(-0.25, 0.25), 0.9 + 0.1 * i), length,
+                          b.rng.uniform(0.04, 0.06), tan_fur if i < 6 else {"purple": 1, "dstone": 1, "sand": 1})
+            for k in range(3):
+                spike((0, 0, 0.6), ((k - 1) * 0.35, 0.15, 1), 0.13 - 0.02 * abs(k - 1), 0.035,
+                      {"purple": 2, "dstone": 1})
+            spike((0, -0.04, 0.12), (0, -0.6, 0.8), 0.14, 0.05, {"lsand": 2, "white": 1})  # inner-ear tuft
+        to_local = M(base, rot).inverted()
+        for v in since(m):
+            w = smoothstep(0.16, 0.32, (to_local @ v.co).z)
+            b.weigh([v], {f"ear_{side}_0": 1 - w, f"ear_{side}_1": w})
+
+
 # ---------------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------------
