@@ -5,7 +5,7 @@ extends SceneTree
 ## A dirt road runs north past a village, a campsite and a pond to some ruins, and a
 ## crossroads south of the start leads west to a military outpost and east to a
 ## homestead. An overgrown graveyard and a second pond fill the north. Floating eyes
-## guard each area and golems the north; weapons (at random spots), ammo, health and an
+## guard each area, golems the north and giant spiders the pine groves; weapons (at random spots), ammo, health and an
 ## invulnerability powerup are spread around, and gems are tucked around every landmark.
 ## Two watchtowers joined by a plank bridge guard the west road. Every watchtower's ladder
 ## can be climbed. A pair of linked portals joins the west end of the crossroads road to the far north end of the main
@@ -20,6 +20,7 @@ const OUT := "res://scenes/level.tscn"
 const PICKUP := preload("res://scripts/weapons/pickup.gd")
 const EYE := preload("res://scripts/enemies/floating_eye.gd")
 const GOLEM := preload("res://scripts/enemies/golem.gd")
+const SPIDER := preload("res://scripts/enemies/spider.gd")
 const PORTAL := preload("res://scripts/portal.gd")
 const CAMPFIRE := preload("res://scripts/campfire.gd")
 const TERRAIN := preload("res://scripts/terrain.gd")
@@ -663,8 +664,9 @@ func pickup(x: float, z: float, y: float) -> Area3D:
 	return pk
 
 
-## Floating eyes, roughly one per area, and three golems in the far north (the ruins,
-## the graveyard and the north pond). None can see the spawn point, so the player has
+## Floating eyes, roughly one per area, three golems in the far north (the ruins,
+## the graveyard and the north pond) and five spiders in clearings inside the pine
+## groves, away from the other enemies. None can see the spawn point, so the player has
 ## time to grab the pistol first.
 func build_enemies() -> void:
 	for v in [Vector2(0, -30), Vector2(16, -14), Vector2(26, 12), Vector2(-26, 12), Vector2(-36, 50),
@@ -682,6 +684,13 @@ func build_enemies() -> void:
 		golem.position = Vector3(v.x, ground(v.x, v.y) + 0.85, v.y)
 		groups["Enemies"].add_child(golem, true)
 		golem.owner = level
+	for v in [Vector2(40, 24), Vector2(32, -12), Vector2(-56, 0), Vector2(-72, -28), Vector2(52, -64)]:
+		var spider := CharacterBody3D.new()
+		spider.set_script(SPIDER)
+		spider.name = "Spider"
+		spider.position = Vector3(v.x, ground(v.x, v.y) + 0.1, v.y)
+		groups["Enemies"].add_child(spider, true)
+		spider.owner = level
 
 
 ## Two linked portals, each facing (+Z) back along its road: one at the west end of the

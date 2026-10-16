@@ -60,6 +60,7 @@
 [ext_resource type="Script" uid="uid://bmnuy5vm6je63" path="res://scripts/enemies/floating_eye.gd" id="58_fkalo"]
 [ext_resource type="Script" uid="uid://dfxyu5hbryih1" path="res://scripts/enemies/golem.gd" id="59_tmks3"]
 [ext_resource type="Script" uid="uid://4qt03hw0p0xq" path="res://scripts/portal.gd" id="60_appgx"]
+[ext_resource type="Script" uid="uid://by87oe32fugkl" path="res://scripts/enemies/spider.gd" id="61_spidr"]
 
 [node name="Level" type="Node3D" unique_id=529389825]
 
@@ -6185,6 +6186,26 @@ model_scale = 1.15
 knockback = 0.02
 loot_drops = Vector2i(2, 3)
 gem_drops = 3
+
+[node name="Spider" type="CharacterBody3D" parent="Enemies" unique_id=1161903683]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40.0, -0.841006, 24.0)
+script = ExtResource("61_spidr")
+
+[node name="Spider2" type="CharacterBody3D" parent="Enemies" unique_id=490208918]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32.0, 2.6588, -12.0)
+script = ExtResource("61_spidr")
+
+[node name="Spider3" type="CharacterBody3D" parent="Enemies" unique_id=1295486384]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56.0, 0.528947, 0.0)
+script = ExtResource("61_spidr")
+
+[node name="Spider4" type="CharacterBody3D" parent="Enemies" unique_id=565516540]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72.0, -2.398886, -28.0)
+script = ExtResource("61_spidr")
+
+[node name="Spider5" type="CharacterBody3D" parent="Enemies" unique_id=1838909327]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52.0, 0.752065, -64.0)
+script = ExtResource("61_spidr")
 
 [node name="Portals" type="Node3D" parent="." unique_id=2038222910]
 

@@ -19,6 +19,7 @@ the world, written straight into the Godot project at godot/assets/sfx/.
   shield_up.wav      invulnerability pickup: a bright rising chord with a shimmer
   shield_hum.wav     the shield's glassy shimmer while it lasts, seamless loop
   shield_down.wav    the shield fading: a falling, thinning chord
+  spider_alert/charge/spit/hurt/die/step.wav   the spider: chittering, hissing and its toxin spray
 
 Loop files get a .import that tells Godot to loop them. Run from the repo root:
   python3 tools/generate_sfx.py
@@ -389,6 +390,60 @@ def golem_sounds(rng):
     write("golem_die.wav", mix(fizzle, falls, rumble(n, 0.05, 0.02, 0.6), [c * math.exp(-i / (0.25 * RATE)) for i, c in enumerate(crackle(n, 100))]), 0.85)
 
 
+def spider_sounds(rng):
+    """The giant spider: dry chitters and clicks, hisses, and the wet spray of its toxin."""
+    def clicks(n, rate, gain=1.0, bright=0.45):
+        """Rapid dry clicks of mandibles and leg tips, `rate` per second."""
+        x = [0.0] * n
+        for _ in range(int(rate * n / RATE)):
+            start, amp = rng.randrange(n), rng.uniform(0.4, 1.0) * gain
+            for j in range(rng.randint(30, 90)):
+                if start + j < n:
+                    x[start + j] += rng.uniform(-1, 1) * amp * math.exp(-j / 14)
+        return highpass(x, bright)
+
+    def hiss(n, bright=0.25):
+        return highpass(noise(n, rng), bright)
+
+    # Alert: a rattling chitter swelling over a sharp hiss.
+    n = int(0.8 * RATE)
+    chit = [c * (0.6 + 0.4 * math.sin(2 * math.pi * 31 * i / RATE)) for i, c in enumerate(clicks(n, 260))]
+    write("spider_alert.wav", [(c + h * 0.45) * e for c, h, e in zip(chit, hiss(n), env(n, 0.04, 0.3))], 0.7)
+
+    # Charge: a hiss drawn in and building, rattling faster toward the end.
+    n = int(0.55 * RATE)
+    build = [min(i / n * 1.3, 1.0) ** 1.5 for i in range(n)]
+    rattle = clicks(n, 180, 0.6)
+    write("spider_charge.wav", [(h * 0.8 + r) * b for h, r, b in zip(hiss(n, 0.3), rattle, build)], 0.5)
+
+    # Spit: a wet, pressurised spray, like a hose nozzle opened hard: bright noise that
+    # bursts in, gurgles and sputters, then cuts off.
+    n = int(0.8 * RATE)
+    jet = highpass(lowpass(noise(n, rng), 0.7), 0.12)
+    gurgle = [0.7 + 0.3 * math.sin(2 * math.pi * (38 + 9 * math.sin(i / RATE * 11)) * i / RATE) for i in range(n)]
+    shape = [min(i / (0.015 * RATE), 1.0) * (1.0 if i < 0.6 * RATE else math.exp(-(i - 0.6 * RATE) / (0.04 * RATE)))
+             for i in range(n)]
+    sputter = [s * 0.5 for s in clicks(n, 90, 1.0, 0.2)]
+    write("spider_spit.wav", [(j * g + p) * e for j, g, p, e in zip(jet, gurgle, sputter, shape)], 0.6)
+
+    # Hurt: a crunchy click burst with a short shrill squeak.
+    n = int(0.3 * RATE)
+    squeak = [tone(n, 1700, 0.05, 0.004, (1.0, 0.4))[i] * (1 + 0.5 * math.sin(i / RATE * 2 * math.pi * 60)) * 0.4
+              for i in range(n)]
+    write("spider_hurt.wav", mix(clicks(n, 600, 1.0, 0.3), squeak, [s * e * 0.5 for s, e in zip(hiss(n), env(n, 0.002, 0.05))]), 0.7)
+
+    # Death: a wet crunch, legs rattling and a long falling hiss.
+    n = int(1.1 * RATE)
+    crunch = [s * e for s, e in zip(lowpass(noise(n, rng), 0.35), env(n, 0.002, 0.07))]
+    rattle = [c * math.exp(-i / (0.35 * RATE)) for i, c in enumerate(clicks(n, 400, 0.8))]
+    sigh = [h * e * 0.5 for h, e in zip(lowpass(hiss(n, 0.15), 0.6), env(n, 0.05, 0.4))]
+    write("spider_die.wav", mix(crunch, rattle, sigh, [s * 0.5 for s in sweep_thump(n, 140, 50, 0.04, 0.1)]), 0.85)
+
+    # Step: one leg tip tapping down, a tiny dry tick.
+    n = int(0.05 * RATE)
+    write("spider_step.wav", [s * e for s, e in zip(highpass(noise(n, rng), 0.3), env(n, 0.0005, 0.006))], 0.5)
+
+
 def generate():
     os.makedirs(OUT, exist_ok=True)
     for i in range(5):
@@ -436,6 +491,7 @@ def generate():
     portal_sounds(random.Random(17))
     golem_sounds(random.Random(19))
     shield_sounds(random.Random(23))
+    spider_sounds(random.Random(29))
 
     for name in ("slide_loop.wav", "wind_loop.wav", "portal_hum.wav", "golem_hum.wav", "shield_hum.wav"):
         path = os.path.join(OUT, name + ".import")

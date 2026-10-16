@@ -1271,14 +1271,25 @@ def enemy_spider(b):
         b.box((0.05, 0.03, 0.05), (x, -0.48, z), color="red", glow=True)
     for s in (-1, 1):
         b.limb((s * 0.06, -0.48, 0.47), (s * 0.04, -0.55, 0.32), 0.03, 0, 4, "bone")
-    for s in (-1, 1):
+    # Eight rigged legs. Each is one tube from hip to toe skinned to two bones,
+    # leg_<side>_<k>_0 (hip to knee) and leg_<side>_<k>_1 (knee to toe), side l (-X) or
+    # r (+X) and k = 0 at the front, both chained to the "body" bone, which everything
+    # else follows. The game plants the toes on the ground and bends the knees to reach
+    # them as it walks (see scripts/enemies/spider.gd).
+    b.bone("body", (0, 0, 0.55), (0, 0, 0.85))
+    for s, side in ((-1, "l"), (1, "r")):
         for k, y in enumerate((-0.3, -0.12, 0.06, 0.24)):
             spread = (y - 0.0) * 1.8
-            p0 = (s * 0.2, y, 0.55)
-            p1 = (s * 0.75, y + spread * 0.5, 0.95)
-            p2 = (s * 1.15, y + spread, 0.0)
-            b.limb(p0, p1, 0.05, 0.04, 4, {"black": 2, "dbark": 1})
-            b.limb(p1, p2, 0.04, 0.012, 4, {"black": 2, "dbark": 1})
+            p0 = Vector((s * 0.2, y, 0.55))
+            p1 = Vector((s * 0.75, y + spread * 0.5, 0.95))
+            p2 = Vector((s * 1.15, y + spread, 0.0))
+            hip, shin = f"leg_{side}_{k}_0", f"leg_{side}_{k}_1"
+            b.bone(hip, p0, p1, "body")
+            b.bone(shin, p1, p2, hip)
+            pts = [p0, p0.lerp(p1, 0.5), p1, p1.lerp(p2, 0.5), p2]
+            rings = b.tube(pts, [0.05, 0.045, 0.04, 0.026, 0.0], seg=4, color={"black": 2, "dbark": 1})
+            for ring, w in zip(rings, ({hip: 1.0}, {hip: 1.0}, {hip: 0.5, shin: 0.5}, {shin: 1.0}, {shin: 1.0})):
+                b.weigh(ring, w)
 
 
 TENTACLE_BONES = 4
