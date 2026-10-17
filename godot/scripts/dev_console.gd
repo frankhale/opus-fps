@@ -40,7 +40,7 @@ func _ready() -> void:
 	register("screenshot", _cmd_screenshot, "Close the console and save a screenshot to ~/Pictures/<game name>/")
 	register("quit", func(_args): get_tree().quit(), "Quit the game")
 	register("cat", _cmd_cat, "Send the shadow cat (on the island) off now: cat walk / cat trot / cat run")
-	register("scene", _cmd_scene, "Switch scene: scene world / scene gallery / scene island. No name: show the current one")
+	register("scene", _cmd_scene, "Switch scene: scene hub / scene world / scene gallery / scene island. No name: show the current one")
 	_print("[color=#8f8]Opus FPS console[/color] - type [b]help[/b] for commands")
 
 

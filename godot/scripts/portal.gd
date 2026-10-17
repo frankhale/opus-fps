@@ -6,6 +6,8 @@ extends Node3D
 ## membrane from either side sends the player out of the `exit` portal, keeping their
 ## offset, facing and momentum relative to the gate: step into one portal's front and
 ## you come out of the other's front, walking away from it.
+## Or, given a `level`, walking through takes the player to that level instead (the hub's
+## portals), and a `title` floats above the ring.
 ## The frame is solid; the membrane is not. The gold runes on the ring pulse, and flare
 ## with the light when someone passes through. (@tool so the model shows in the editor.)
 
@@ -24,16 +26,35 @@ const LIGHT_COLOR := Color(0.35, 0.65, 1.0)
 const RUNE_DIM := 0.35
 const RUNE_GLOW := 0.8
 const PULSE_SPEED := 0.6
+## The title: gold lettering with a dark outline (like the gallery's headings), this far
+## above the top of the ring.
+const TITLE_COLOR := Color(0.95, 0.85, 0.55)
+const TITLE_SIZE := 96
+const TITLE_PIXEL := 0.012
+const TITLE_GAP := 1.6
 
 ## The portal this one sends the player to.
 @export var exit_path: NodePath
+## A level to go to instead (a key of Main.LEVELS, such as "island"): walking through
+## loads it. Leave empty for a portal with an exit.
+@export var level := ""
+## Written above the ring (none if empty).
+@export var title := "":
+	set(v):
+		title = v
+		if _title:
+			_title.text = v
+			_title.visible = v != ""
 @export var model_scale := 1.3:
 	set(v):
 		model_scale = v
 		if _model:
 			_model.scale = Vector3.ONE * v
+		if _title:
+			_title.position.y = _title_height()
 
 var _model: Node3D
+var _title: Label3D
 var _light: OmniLight3D
 var _rune_glow: ShaderMaterial
 var _whoosh: AudioStreamPlayer
@@ -55,6 +76,19 @@ func _ready() -> void:
 	_light.omni_range = 4.0 * model_scale
 	_light.position = Vector3(0.0, c, 0.0)
 	add_child(_light)
+	_title = Label3D.new()
+	_title.text = title
+	_title.visible = title != ""
+	_title.font_size = TITLE_SIZE
+	_title.pixel_size = TITLE_PIXEL
+	_title.modulate = TITLE_COLOR
+	@warning_ignore("integer_division")
+	_title.outline_size = TITLE_SIZE / 6  # whole pixels
+	_title.outline_modulate = Color(0.05, 0.05, 0.06)
+	_title.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	_title.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	_title.position.y = _title_height()
+	add_child(_title)
 	_own_rune_material()
 	if Engine.is_editor_hint():
 		return
@@ -71,9 +105,15 @@ func _ready() -> void:
 	_whoosh.stream = WHOOSH
 	_whoosh.volume_db = -4.0
 	add_child(_whoosh)
+	if level != "":
+		Main.preload_level(level)  # loads in the background, ready for when you step through
 	_exit = get_node_or_null(exit_path) as Portal
-	if _exit == null:
-		push_warning("%s has no exit portal" % name)
+	if _exit == null and level == "":
+		push_warning("%s has no exit portal or level" % name)
+
+
+func _title_height() -> float:
+	return (MEMBRANE_CENTER + MEMBRANE_RADIUS) * model_scale + TITLE_GAP
 
 
 ## Gives this portal its own copy of the shared glow material on its runes, so their
@@ -118,7 +158,7 @@ func _process(delta: float) -> void:
 
 
 func _physics_process(_delta: float) -> void:
-	if Engine.is_editor_hint() or _exit == null or _player_node() == null:
+	if Engine.is_editor_hint() or (_exit == null and level == "") or _player_node() == null:
 		return
 	var p := to_local(_player.global_position + Vector3.UP * BODY_HEIGHT)
 	# Crossing the membrane's plane (local z = 0) inside the ring sends the player through.
@@ -134,6 +174,20 @@ func _physics_process(_delta: float) -> void:
 
 
 func _send_player() -> void:
+	if level != "":
+		# Off to another level: the player stops at the membrane, the whoosh and a flare,
+		# and the screen fades to the portal's light as the level changes.
+		_flare = 1.0
+		_whoosh.play()
+		set_physics_process(false)
+		_player.velocity = Vector3.ZERO
+		_player.set_physics_process(false)
+		var main := get_tree().current_scene as Main
+		if main:
+			main.fade_to_level(level, LIGHT_COLOR)
+		else:
+			Main.change_level(get_tree(), level)
+		return
 	# Through this portal and out of the exit, turned around so a body entering this
 	# portal's front comes out of the exit's front (and back out of back).
 	var turn := Transform3D(Basis(Vector3.UP, PI), Vector3.ZERO)

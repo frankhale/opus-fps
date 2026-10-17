@@ -1,0 +1,30 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/hub.gd" id="1_hub"]
+[ext_resource type="Script" path="res://scripts/portal.gd" id="2_portal"]
+
+[node name="Hub" type="Node3D"]
+script = ExtResource("1_hub")
+
+[node name="PlayerStart" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 14)
+
+[node name="Portals" type="Node3D" parent="."]
+
+[node name="PortalGallery" type="Node3D" parent="Portals"]
+transform = Transform3D(0.874157, 0, -0.485643, 0, 1, 0, 0.485643, 0, 0.874157, -10, 0, -4)
+script = ExtResource("2_portal")
+level = "gallery"
+title = "Gallery"
+
+[node name="PortalWorld" type="Node3D" parent="Portals"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -8)
+script = ExtResource("2_portal")
+level = "world"
+title = "Main Game"
+
+[node name="PortalIsland" type="Node3D" parent="Portals"]
+transform = Transform3D(0.874157, 0, 0.485643, 0, 1, 0, -0.485643, 0, 0.874157, 10, 0, -4)
+script = ExtResource("2_portal")
+level = "island"
+title = "Island"

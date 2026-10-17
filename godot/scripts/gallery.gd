@@ -34,14 +34,6 @@ const ROW_GAP := 8.0
 const MAX_WIDTH := 70.0
 ## z of the front edge of the first row.
 const START_Z := 22.0
-## The ground's look: the pack's palette material dimmed like the levels' ground
-## (Terrain.ground_brightness), every face on the grass swatch (column, row).
-const GROUND_MATERIAL := preload("res://materials/ps1_palette.tres")
-const GROUND_BRIGHTNESS := 0.8
-const GRASS_SWATCH := Vector2(1, 0)
-## Size of the ground's faces (small faces keep the PS1 vertex snapping steady up close).
-const GROUND_STEP := 1.0
-
 ## Length of one fence_wood segment, in meters (the ground's sides are whole numbers of them).
 const FENCE_SEGMENT := 2.0
 ## Height of the invisible walls behind the fence.
@@ -154,7 +146,7 @@ func build() -> void:
 	var tiles := ceili(maxf(area.size.x, area.size.y) / 8.0)
 	var side := (2 * ceili((tiles - 1) / 2.0) + 1) * 8.0
 	area = Rect2(area.get_center() - Vector2(side, side) / 2.0, Vector2(side, side))
-	_ground(area)
+	add_child(FlatGround.build(area))
 	_fence(area)
 
 
@@ -232,49 +224,6 @@ func _label(text: String, size: int, pixel: float, color: Color) -> Label3D:
 	label.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
 	label.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
 	return label
-
-
-## Flat grass ground covering `area` (x/z rectangle) at height 0, solid underfoot.
-## Each face gets its own vertices so it can sit in the grass swatch, as the terrain
-## tiles' faces do.
-func _ground(area: Rect2) -> void:
-	var nx := ceili(area.size.x / GROUND_STEP)
-	var nz := ceili(area.size.y / GROUND_STEP)
-	var verts := PackedVector3Array()
-	var uvs := PackedVector2Array()
-	for j in nz:
-		for i in nx:
-			var x0 := area.position.x + i * GROUND_STEP
-			var z0 := area.position.y + j * GROUND_STEP
-			for c in [Vector2(0, 0), Vector2(1, 0), Vector2(0, 1), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)]:
-				verts.append(Vector3(x0 + c.x * GROUND_STEP, 0.0, z0 + c.y * GROUND_STEP))
-				uvs.append((GRASS_SWATCH * 16.0 + Vector2(2.0, 2.0) + c * 12.0) / Vector2(128.0, 64.0))
-	var normals := PackedVector3Array()
-	normals.resize(verts.size())
-	normals.fill(Vector3.UP)
-	var arrays := []
-	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX] = verts
-	arrays[Mesh.ARRAY_NORMAL] = normals
-	arrays[Mesh.ARRAY_TEX_UV] = uvs
-	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	var mat: ShaderMaterial = GROUND_MATERIAL.duplicate()
-	mat.set_shader_parameter("albedo_scale", GROUND_BRIGHTNESS)
-	mesh.surface_set_material(0, mat)
-	var ground := MeshInstance3D.new()
-	ground.name = "Ground"
-	ground.mesh = mesh
-	add_child(ground)
-	var body := StaticBody3D.new()
-	body.name = "Collision"
-	var shape := CollisionShape3D.new()
-	var box := BoxShape3D.new()
-	box.size = Vector3(area.size.x, 1.0, area.size.y)
-	shape.shape = box
-	shape.position = Vector3(area.get_center().x, -0.5, area.get_center().y)
-	body.add_child(shape)
-	ground.add_child(body)
 
 
 ## A wooden fence along the edge of `area` (x/z rectangle) and an invisible wall just
