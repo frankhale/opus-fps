@@ -22,7 +22,8 @@ extends Node3D
 ## them), trees, bushes and grass under Props; the ruins of an overgrown gateway among
 ## broken walls and columns under Ruins (move the group to move the whole site); the
 ## creatures (the shadow cat roams the island, the lynx ranger and a dachshund potter
-## about on it, and the arcane eye and a jellyfish float over it); and PlayerStart, where
+## about on it, the arcane eye and a jellyfish float over it, and a pair of lovebirds
+## fly about over it, perching on things); and PlayerStart, where
 ## the player starts and comes back after dying. They're instances of the prefab library
 ## (res://prefabs/), so the creatures show their models in the editor. The ground is
 ## levelled round wherever Ruins stands, and the group settles onto that level; after
@@ -296,7 +297,7 @@ func _build_walls() -> void:
 func _keep_on_island(creature: Node) -> void:
 	if creature is Jellyfish:
 		creature.can_hover = func(p: Vector3) -> bool: return inland(p.x, p.z) > -JELLY_OFFSHORE
-	elif creature is ArcaneEye:
+	elif creature is ArcaneEye or creature is Lovebird:
 		creature.can_hover = func(p: Vector3) -> bool: return inland(p.x, p.z) > 0.0
 	else:
 		var shore := LYNX_SHORE if creature is LynxRanger else DOG_SHORE if creature is Dachshund else CAT_SHORE

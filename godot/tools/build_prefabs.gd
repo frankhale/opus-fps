@@ -9,8 +9,8 @@ extends SceneTree
 ##   prefabs/terrain/  the terrain tiles, cliffs and mountains
 ##   prefabs/pickups/  weapons, ammo, health, gems and the invulnerability powerup
 ##   prefabs/enemies/  floating eye, golem, spider and shadow cat
-##   prefabs/creatures/ the harmless island creatures: lynx ranger, dachshund, arcane eye
-##                     and jellyfish
+##   prefabs/creatures/ the harmless island creatures: lynx ranger, dachshund, arcane eye,
+##                     jellyfish and lovebird
 ## Enemies and creatures build their model when the game runs, so each carries an
 ## EditorPreview showing it in the editor.
 ##
@@ -80,6 +80,7 @@ const ACTORS := {
 	"dachshund": ["creatures", "res://scripts/enemies/dachshund.gd", 1.0, true],
 	"arcane_eye": ["creatures", "res://scripts/enemies/arcane_eye.gd", 1.3, true],
 	"jellyfish": ["creatures", "res://scripts/enemies/jellyfish.gd", 1.0, false],
+	"lovebird": ["creatures", "res://scripts/enemies/lovebird.gd", 1.0, true],
 }
 
 var force := false

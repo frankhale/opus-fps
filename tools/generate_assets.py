@@ -3151,6 +3151,258 @@ def ruins_gate(b):
         clump(p, 0.28, 9, 0.2)
 
 
+@asset("enemies")
+def enemy_lovebird(b):
+    """Rosy-faced (peach-faced) lovebird in flight, faces -Y, life size: 0.18 m from beak
+    to tail tip and 0.37 m across its spread wings, with its origin at the middle of its
+    body (hover it in game). A stocky bright green bird with a big round head, a red
+    forehead fading to salmon-pink cheeks and throat, a white ring round each dark eye
+    and a pale hooked beak. Its rump is blue. Its wings are spread wide and flat, every
+    flight feather its own piece: green and blue coverts over green-and-blue secondaries
+    and grey-brown primaries fanning out to the tip. Its short tail is a fan of green and
+    blue feathers, and its grey-brown feet hang under its belly.
+
+    Rigged for a flying animation (rest pose as modeled, wings spread level). Sides are
+    its own: l is +X.
+      body (root, at the middle of the body) > head
+      body > wing_<side>_0 (shoulder to elbow) > wing_<side>_1 (to the wrist) > wing_<side>_2 (to the tip of the hand)
+      body > tail_0 (root) > tail_1 (tip)
+      body > leg_<side> (hip to ankle)
+    Each feather follows the bone it grows from, blended across the joint when it grows
+    near one, so the wing folds and flaps without gaps. The tail feathers bend from
+    tail_0 into tail_1, so spreading or bending the tail curls them smoothly."""
+    S = 0.01  # laid out in centimeters
+    sides = {"l": 1, "r": -1}
+
+    def cm(*p):
+        return Vector(p) * S
+
+    # Wing joints (left side; the right mirrors in X): shoulder, elbow, wrist, hand tip.
+    wing = [Vector((2.0, -0.8, 1.4)), Vector((5.0, 0.0, 1.7)), Vector((8.5, -1.0, 1.8)), Vector((11.0, -0.3, 1.8))]
+    tail = [Vector((0, 5.0, -0.4)), Vector((0, 7.5, -0.8)), Vector((0, 11.5, -1.3))]
+    hips = {side: (Vector((s * 1.0, -0.8, -1.6)), Vector((s * 1.1, -1.8, -3.7))) for side, s in sides.items()}
+    head_c = Vector((0, -5.2, 1.5))
+
+    # Skeleton (before any geometry: adding the weight layer invalidates vertices).
+    b.bone("body", cm(0, 0, 0), cm(0, -3, 0.4))
+    b.bone("head", cm(0, -3.6, 0.8), cm(0, -7.0, 1.9), "body")
+    for side, s in sides.items():
+        j = [cm(p.x * s, p.y, p.z) for p in wing]
+        b.bone(f"wing_{side}_0", j[0], j[1], "body")
+        b.bone(f"wing_{side}_1", j[1], j[2], f"wing_{side}_0")
+        b.bone(f"wing_{side}_2", j[2], j[3], f"wing_{side}_1")
+    b.bone("tail_0", cm(*tail[0]), cm(*tail[1]), "body")
+    b.bone("tail_1", cm(*tail[1]), cm(*tail[2]), "tail_0")
+    for side, (hip, ankle) in hips.items():
+        b.bone(f"leg_{side}", cm(*hip), cm(*ankle), "body")
+    b.P = M(scale=S)  # the geometry is laid out in centimeters too
+
+    def mark():
+        return len(b.bm.verts)
+
+    def since(m):
+        """The vertices made since mark() returned m."""
+        return [v for v in list(b.bm.verts)[m:] if v.is_valid]
+
+    def local(f):
+        """A face's center in the centimeter layout."""
+        return f.calc_center_median() / S
+
+    def oval_tube(sections, seg=8, color="toxic"):
+        """Tube through `sections` of (center, half-width, half-height): an oval cross
+        section, widest across X. A half-width of 0 closes it to a point."""
+        rings = b.tube([c for c, _, _ in sections], [1.0 if w > 0 else 0.0 for _, w, _ in sections],
+                       seg=seg, color=color)
+        for ring, (c, w, h) in zip(rings, sections):
+            c = b.P @ Vector(c)
+            for v in ring:
+                d = v.co - c
+                v.co = c + Vector((d.x * w, d.y * w, d.z * h))
+        return rings
+
+    def feather(root, u, length, width, color, thick=0.1, droop=0.2):
+        """A flat feather from `root` along the unit vector `u`, lying in the plane of u
+        and the horizontal (its flat side up), rounded at the tip and drooping a little
+        toward it. Returns its vertices."""
+        root, u = Vector(root), Vector(u).normalized()
+        v = u.cross(Vector((0, 0, 1)))
+        if v.length < 1e-6:
+            v = Vector((1, 0, 0))
+        v.normalize()
+        n = v.cross(u)
+        if n.z < 0:
+            n = -n
+        outline = [(0, -0.3), (0.5, -0.5), (0.94, -0.26), (0.94, 0.26), (0.5, 0.5), (0, 0.3)]
+        top = [root + u * length * a + v * width * c - n * droop * a * a for a, c in outline]
+        coords = top + [p - n * thick for p in top]
+        k = len(outline)
+        faces = [tuple(range(k)), tuple(range(2 * k - 1, k - 1, -1))]
+        faces += [(i, (i + 1) % k, k + (i + 1) % k, k + i) for i in range(k)]
+        return b.poly(coords, faces, color=color)
+
+    # Body: a plump egg, deepest at the breast, tapering back to the rump and running
+    # forward up into the head. Green all over, with a blue rump above the tail and the
+    # salmon pink of the throat spilling onto the upper breast. It follows `body`, and
+    # its front, inside the neck, blends into `head`.
+    def body_color(f):
+        c = local(f)
+        if c.y > 3.0 and c.z > 0.2:
+            return "cyan"
+        if c.y < -2.6 and c.z < 1.0:
+            return "flesh"
+        return {"toxic": 8, "lgrass": 1}
+    m = mark()
+    oval_tube([((0, 6.0, -0.4), 0.4, 0.35), ((0, 5.6, -0.35), 0.9, 0.8), ((0, 4.3, -0.2), 1.8, 1.6),
+               ((0, 2.4, -0.1), 2.5, 2.4), ((0, 0.0, 0.0), 2.8, 2.8), ((0, -2.4, 0.3), 2.6, 2.7),
+               ((0, -3.9, 0.9), 2.3, 2.4), ((0, -4.8, 1.3), 0.0, 0.0)], seg=10, color=body_color)
+    for v in since(m):
+        w = smoothstep(-3.0, -4.4, v.co.y / S)
+        b.weigh([v], {k: x for k, x in (("body", 1 - w), ("head", w)) if x > 0})
+
+    # Head: big and round. A red forehead and fore-crown, salmon-pink cheeks and throat,
+    # green behind; a white ring round each dark eye; a pale hooked beak.
+    def head_color(f):
+        c = local(f) - head_c
+        if c.y < -0.3 and c.z > 0.3 or c.y < -1.2 and c.z > -0.2:
+            return "orange"
+        if c.y < 0.6 and c.z <= 0.3:
+            return "flesh"
+        return {"toxic": 8, "lgrass": 1}
+    m = mark()
+    def on_head(x, y, z):
+        return tuple(head_c + Vector((x, y, z)))
+    b.ico(1, 2, loc=head_c, scale=(2.3, 2.4, 2.3), color=head_color)
+    for s in (-1, 1):
+        b.ico(0.72, 1, loc=on_head(s * 1.9, -0.95, 0.55), scale=(0.35, 1, 1), color="white")
+        b.ico(0.5, 1, loc=on_head(s * 2.05, -1.0, 0.55), scale=(0.5, 1, 1), color="black")
+        b.ico(0.13, 0, loc=on_head(s * 2.2, -1.25, 0.75), color="white")
+    oval_tube([(on_head(0, -1.6, 0.4), 0.85, 0.95), (on_head(0, -2.5, 0.1), 0.7, 0.75),
+               (on_head(0, -3.1, -0.6), 0.45, 0.5), (on_head(0, -3.0, -1.4), 0.2, 0.2),
+               (on_head(0, -2.7, -1.7), 0.0, 0.0)], seg=6, color="bone")
+    oval_tube([(on_head(0, -1.4, -0.9), 0.75, 0.6), (on_head(0, -2.3, -1.0), 0.5, 0.4),
+               (on_head(0, -2.6, -0.8), 0.0, 0.0)], seg=6, color="bone")
+    b.weigh(since(m), {"head": 1.0})
+
+    # Tail: a blue upper-tail covert over a short fan of eight feathers, green in the
+    # middle and blue at the sides, sloping back and a little down. Each feather bends
+    # from `tail_0` into `tail_1` along its length.
+    m = mark()
+    oval_tube([((0, 3.4, 0.6), 1.6, 1.0), ((0, 5.4, 0.2), 1.3, 0.6), ((0, 7.2, -0.3), 0.8, 0.3),
+               ((0, 8.2, -0.6), 0.0, 0.0)], seg=8, color="cyan")
+    oval_tube([((0, 3.6, -1.2), 1.4, 0.9), ((0, 5.6, -1.0), 1.1, 0.5), ((0, 7.0, -1.1), 0.0, 0.0)],
+              seg=8, color="toxic")
+    fan = 8
+    for k in range(fan):
+        x = (k + 0.5) / fan * 2 - 1  # -1 at the right edge to 1 at the left
+        a = math.radians(24 * x)
+        u = Vector((math.sin(a), math.cos(a), -0.12))
+        length = 6.6 - 1.2 * abs(x)
+        root = tail[0] + Vector((x * 0.6, 0, -0.04 * abs(x)))
+        color = "toxic" if abs(x) < 0.3 else ("cyan" if abs(x) < 0.8 else {"cyan": 1, "lgrass": 1})
+        feather(root, u, length, 1.5, color, droop=0.4)
+    for v in since(m):
+        y = v.co.y / S
+        w1 = smoothstep(6.6, 8.6, y)
+        w0 = smoothstep(3.8, 5.2, y) - w1
+        b.weigh([v], {k: x for k, x in (("body", 1 - w0 - w1), ("tail_0", w0), ("tail_1", w1)) if x > 0})
+
+    # Wings, spread wide and level. A slim leading edge runs out along the bones, and
+    # under rows of green and blue coverts the flight feathers fan out behind it: the
+    # secondaries along the forearm, green shading to blue toward the wrist, and the long
+    # grey-brown primaries from the hand, swinging round from back to out to make the tip.
+    def chain_point(p):
+        """A point on the wing's bones: 0 is the shoulder, 1 the elbow, 2 the wrist, 3 the tip."""
+        i = min(int(p), 2)
+        return i, p - i, wing[i].lerp(wing[i + 1], p - i)
+
+    def wing_weights(side, i, t):
+        bones = [f"wing_{side}_{k}" for k in range(3)]
+        prev = bones[i - 1] if i > 0 else "body"
+        if t > 0.8 and i < 2:
+            k = (t - 0.8) / 0.4
+            return {bones[i]: 1 - k, bones[i + 1]: k}
+        if t < 0.2:
+            k = (0.2 - t) / 0.4
+            return {bones[i]: 1 - k, prev: k}
+        return {bones[i]: 1.0}
+
+    primary_len = [6.0, 6.4, 6.8, 7.1, 7.4, 7.6, 7.6, 7.3, 6.8]
+    for side, s in sides.items():
+        def grow(p, angle, length, width, color, lift=0.0, droop=0.2):
+            """A feather at `p` along the bones, `angle` degrees round from straight back
+            toward the tip, skinned to the bones at its root."""
+            i, t, root = chain_point(p)
+            a = math.radians(angle)
+            m = mark()
+            feather(Vector((root.x * s, root.y, root.z + lift)), (s * math.sin(a), math.cos(a), 0),
+                    length, width, color, droop=droop)
+            b.weigh(since(m), wing_weights(side, i, t))
+
+        # The leading edge, from inside the body's shoulder out to the hand's tip, skinned
+        # to the nearest bone and blended across each joint.
+        m = mark()
+        pts = [Vector((0.8, -0.6, 1.2))] + wing
+        oval_tube([((p.x * s, p.y, p.z), r, r * 0.5) for p, r in
+                   zip(pts, (1.1, 0.8, 0.55, 0.4, 0.0))], seg=6, color="toxic")
+        joints = [cm(p.x * s, p.y, p.z) for p in pts]
+        bones = ["body"] + [f"wing_{side}_{k}" for k in range(3)]
+        for v in since(m):
+            best = None
+            for i, (a, c) in enumerate(zip(joints, joints[1:])):
+                d = c - a
+                t = min(max((v.co - a).dot(d) / d.length_squared, 0.0), 1.0)
+                dist = (v.co - (a + d * t)).length
+                if best is None or dist < best[0]:
+                    best = (dist, i, t)
+            _, i, t = best
+            w = {bones[i]: 1.0}
+            if t > 0.8 and i + 1 < len(bones):
+                k = (t - 0.8) / 0.4
+                w = {bones[i]: 1 - k, bones[i + 1]: k}
+            elif t < 0.2 and i > 0:
+                k = (0.2 - t) / 0.4
+                w = {bones[i]: 1 - k, bones[i - 1]: k}
+            b.weigh([v], w)
+
+        # Flight feathers, outermost (lowest) first so each lies over the one beyond it.
+        for k in range(9):
+            q = 8 - k
+            grow(2.0 + 0.98 * q / 8, 18 + 64 * q / 8, primary_len[q], 1.6,
+                 {"lstone": 2, "sand": 2, "lsand": 1}, lift=-0.05 - 0.03 * k, droop=0.35)
+        for k in range(9):
+            q = 8 - k
+            x = q / 8
+            color = "toxic" if x < 0.35 else ({"toxic": 1, "cyan": 1} if x < 0.7 else {"cyan": 2, "lgrass": 1})
+            grow(0.35 + 1.6 * x, -6 + 18 * x, 4.6 + 0.8 * x, 1.8, color, lift=-0.1 - 0.03 * k)
+        # Coverts over the bases of the flight feathers: greater coverts and primary
+        # coverts, then a short row of lesser coverts along the front of the arm.
+        for k in range(6):
+            x = k / 5
+            grow(2.05 + 0.85 * x, 22 + 45 * x, 3.3, 1.5, {"toxic": 2, "cyan": 1}, lift=0.14, droop=0.15)
+        for k in range(9):
+            x = k / 8
+            grow(0.4 + 1.55 * x, -4 + 16 * x, 2.9, 1.6, {"toxic": 3, "cyan": 1, "lgrass": 1}, lift=0.2, droop=0.15)
+        for k in range(7):
+            x = k / 6
+            grow(0.5 + 2.2 * x, -2 + 30 * x, 1.8, 1.5, {"toxic": 4, "lgrass": 1}, lift=0.3, droop=0.1)
+
+    # Legs: green feathered thighs tucked into the belly, and short grey-brown legs
+    # hanging down and a little forward, each with two toes forward and two back, curled.
+    for side, s in sides.items():
+        hip, ankle = hips[side]
+        m = mark()
+        b.ico(0.9, 1, loc=(s * 1.1, -0.7, -2.0), scale=(0.9, 1.2, 1), color="toxic")
+        b.tube([hip + Vector((0, 0, 0.3)), hip.lerp(ankle, 0.5), ankle], [0.4, 0.3, 0.3], seg=5, color="lwood")
+        for dx, dy, dz in ((0.35, -1.3, -0.3), (-0.15, -1.25, -0.35), (0.4, 1.0, -0.4), (-0.1, 1.05, -0.3)):
+            toe = ankle + Vector((s * dx, dy, dz))
+            mid = ankle.lerp(toe, 0.55) + Vector((0, 0, 0.2))
+            b.tube([ankle, mid, toe, toe + Vector((0, 0, -0.35))], [0.22, 0.18, 0.12, 0.0], seg=4,
+                   color="lwood")
+        for v in since(m):
+            w = smoothstep(-1.9, -2.6, v.co.z / S)
+            b.weigh([v], {k: x for k, x in (("body", 1 - w), (f"leg_{side}", w)) if x > 0})
+
+
 # ---------------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------------

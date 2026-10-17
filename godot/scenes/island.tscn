@@ -19,6 +19,7 @@
 [ext_resource type="PackedScene" path="res://prefabs/creatures/dachshund.tscn" id="14_l4n00"]
 [ext_resource type="PackedScene" path="res://prefabs/creatures/arcane_eye.tscn" id="16_vtftr"]
 [ext_resource type="PackedScene" path="res://prefabs/creatures/jellyfish.tscn" id="18_0b7cx"]
+[ext_resource type="PackedScene" path="res://prefabs/creatures/lovebird.tscn" id="19_lvbrd"]
 [ext_resource type="PackedScene" path="res://prefabs/scenery/ruins_gate.tscn" id="20_udxv3"]
 [ext_resource type="PackedScene" path="res://prefabs/scenery/stone_wall.tscn" id="21_unq23"]
 [ext_resource type="PackedScene" path="res://prefabs/scenery/ruins_pillar.tscn" id="22_2xiju"]
@@ -271,6 +272,16 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25.42333, 4.7385106, 30.18364
 script = ExtResource("14_5gys5")
 floor_min = 0.0
 wander_radius = 42.0
+
+[node name="Lovebird" type="CharacterBody3D" parent="." unique_id=1739204118 instance=ExtResource("19_lvbrd")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.0, 6.5, 22.0)
+floor_min = 0.0
+wander_radius = 36.0
+
+[node name="Lovebird2" type="CharacterBody3D" parent="." unique_id=604417395 instance=ExtResource("19_lvbrd")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.5, 7.2, 20.5)
+floor_min = 0.0
+wander_radius = 36.0
 
 [node name="Ruins" type="Node3D" parent="." unique_id=890309793]
 transform = Transform3D(0.95174116, 0, 0.3069019, 0, 1, 0, -0.3069019, 0, 0.95174116, -5.0688667, 4.2606, 16.386269)
