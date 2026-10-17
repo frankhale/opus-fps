@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://assets/scenery/crate.glb" id="model"]
+
+[node name="crate" instance=ExtResource("model")]
+transform = Transform3D(1.0, 0, 0, 0, 1.0, 0, 0, 0, 1.0, 0.0, 0.0, 0.0)

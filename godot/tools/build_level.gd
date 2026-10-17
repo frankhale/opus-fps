@@ -12,22 +12,17 @@ extends SceneTree
 ## road. A creek crosses the south of the valley from cliff to cliff, under a bridge on
 ## the main road. Props are dropped onto the terrain surface.
 ##
+## Every object is an instance of the prefab library (res://prefabs/, made by
+## tools/build_prefabs.gd), at the size its prefab gives it unless a size is given here.
+##
 ## Regenerate with:
 ##   Godot --headless --path godot --script res://tools/build_level.gd
-## (The result is an ordinary scene, so it can also just be edited by hand afterwards.)
+## The result is an ordinary scene, and level.tscn has since been edited by hand in the
+## editor (the west portal moved, a fallen pillar added in the graveyard, a few props
+## removed), so regenerating it discards those edits.
 
 const OUT := "res://scenes/level.tscn"
-const PICKUP := preload("res://scripts/weapons/pickup.gd")
-const EYE := preload("res://scripts/enemies/floating_eye.gd")
-const GOLEM := preload("res://scripts/enemies/golem.gd")
-const SPIDER := preload("res://scripts/enemies/spider.gd")
-const PORTAL := preload("res://scripts/portal.gd")
-const CAMPFIRE := preload("res://scripts/campfire.gd")
 const TERRAIN := preload("res://scripts/terrain.gd")
-const GAS_CAN := preload("res://scripts/gas_can.gd")
-const PHYSICS_PROP := preload("res://scripts/physics_prop.gd")
-const EXPLOSIVE_BARREL := preload("res://scripts/explosive_barrel.gd")
-const LADDER := preload("res://scripts/ladder.gd")
 const TILE := 8.0
 const HALF := 11  # tiles from the center to the edge: 23 x 23 tiles
 ## Half-width of the walkable valley (cliff faces sit just beyond this).
@@ -40,7 +35,7 @@ const CREEK_Z := 64.0
 ## by a plank bridge.
 const CHECKPOINT_X := -17.5
 ## The watchtower model's deck height and the center-to-center spacing at which a
-## bridge_plank joins two of them (model units, before WORLD_SCALE).
+## bridge_plank joins two of them (model units, before the watchtower's game size).
 const TOWER_DECK := 4.7
 const TOWER_SPAN := 9.7
 
@@ -48,27 +43,15 @@ var level: Node3D
 var terrain: Terrain
 var groups := {}
 var cache := {}
+var scales := {}
 var terrain_faces: Array = []  # [{min: Vector2, max: Vector2, faces: PackedVector3Array}]
 var rng := RandomNumberGenerator.new()
 ## Separate generator for size variation, so changing scales never shuffles the layout.
 var size_rng := RandomNumberGenerator.new()
 
-## The asset pack is modelled at strict real-world size, which reads as small and
-## cramped in a first-person game. Scenery is scaled up here (trees and cliffs most,
-## like most shooters do); things the player interacts with stay near human scale.
-const WORLD_SCALE := {
-	"tree_pine": 2.4, "tree_pine_tall": 2.2, "tree_oak": 2.0, "tree_dead": 1.8,
-	"tree_stump": 1.4, "log_fallen": 1.4, "bush": 1.5, "bush_short": 1.3, "bush_tall": 1.2, "grass_tuft": 1.4, "flowers": 1.2,
-	"rock_small": 1.5, "rock_large": 1.6, "rock_cluster": 1.6,
-	"terrain_cliff": 2.0, "ruins_arch": 1.6, "ruins_pillar": 1.6, "stone_wall": 1.4,
-	"watchtower": 1.5, "cabin": 1.25, "well": 1.15, "tent": 1.2, "campfire": 1.2,
-	"lamp_post": 1.3, "signpost": 1.2, "fence_wood": 1.15, "fence_post": 1.15,
-	"gas_can": 1.2,
-}
 ## Natural things also get some random size variation.
 const VARIED := ["tree_pine", "tree_pine_tall", "tree_oak", "tree_dead", "bush", "bush_short", "bush_tall", "grass_tuft",
 	"rock_small", "rock_large", "rock_cluster"]
-const LAMP_SCALE := 1.3
 
 
 func _init() -> void:
@@ -77,7 +60,7 @@ func _init() -> void:
 	level = Node3D.new()
 	level.name = "Level"
 	for g in ["Terrain", "Backdrop", "Village", "Campsite", "Ruins", "Pond", "Crossroads", "Outpost", "Homestead",
-			"Graveyard", "NorthPond", "Nature", "Lights", "Pickups", "Enemies", "Portals"]:
+			"Graveyard", "NorthPond", "Nature", "Pickups", "Enemies", "Portals"]:
 		var n := Node3D.new()
 		n.name = g
 		level.add_child(n)
@@ -114,44 +97,39 @@ func _init() -> void:
 # ---------------------------------------------------------------------------
 # Placement helpers
 # ---------------------------------------------------------------------------
-func scene(name: String) -> PackedScene:
+## The prefab for an object (res://prefabs/<category>/<name>.tscn).
+func prefab(name: String) -> PackedScene:
 	if not cache.has(name):
-		for cat in ["terrain", "scenery", "pickups", "weapons", "enemies"]:
-			var p := "res://assets/%s/%s.glb" % [cat, name]
+		for cat in ["scenery", "terrain", "pickups", "enemies", "creatures"]:
+			var p := "res://prefabs/%s/%s.tscn" % [cat, name]
 			if ResourceLoader.exists(p):
 				cache[name] = load(p)
 				break
 	return cache[name]
 
 
-## `s` overrides the size; otherwise WORLD_SCALE (plus variation) applies.
+## An object's game size: the scale its prefab is made at (see build_prefabs.gd).
+func game_scale(name: String) -> float:
+	if not scales.has(name):
+		var inst: Node3D = prefab(name).instantiate()
+		scales[name] = inst.scale.x
+		inst.free()
+	return scales[name]
+
+
+## `s` overrides the size; otherwise the object's game size (plus variation) applies.
 func place(group: String, name: String, x: float, z: float, rot := 0.0, y = null, s := 0.0) -> Node3D:
-	var inst: Node3D = scene(name).instantiate()
+	var inst: Node3D = prefab(name).instantiate()
 	inst.position = Vector3(x, ground(x, z) if y == null else y, z)
 	inst.rotation_degrees.y = rot
 	if s <= 0.0:
-		s = WORLD_SCALE.get(name, 1.0)
+		s = game_scale(name)
 		if name in VARIED:
 			s *= size_rng.randf_range(0.85, 1.2)
 	inst.scale = Vector3.ONE * s
 	inst.name = name
-	if name == "gas_can":
-		inst.set_script(GAS_CAN)  # shootable: blows up
-	elif name == "barrel":
-		inst.set_script(PHYSICS_PROP)  # knocked about by shots, thrown by blasts
-	elif name == "barrel_explosive":
-		inst.set_script(EXPLOSIVE_BARREL)  # knocked about, and blows up like a gas can
 	groups[group].add_child(inst, true)
 	inst.owner = level
-	if name == "watchtower":
-		# Its ladder (on the model's +Z side) climbs to the deck.
-		var ladder := Area3D.new()
-		ladder.set_script(LADDER)
-		ladder.name = "Ladder"
-		ladder.position = Vector3(0.0, 0.0, 2.1)
-		ladder.height = TOWER_DECK
-		inst.add_child(ladder)
-		ladder.owner = level
 	return inst
 
 
@@ -168,16 +146,6 @@ func ground(x: float, z: float) -> float:
 				best = hit.y
 				return best
 	return best
-
-
-func light(group: String, pos: Vector3, color: Color, energy: float, light_range: float) -> void:
-	var l := OmniLight3D.new()
-	l.position = pos
-	l.light_color = color
-	l.light_energy = energy
-	l.omni_range = light_range
-	groups[group].add_child(l, true)
-	l.owner = level
 
 
 # Areas kept clear of random trees/rocks.
@@ -210,7 +178,7 @@ func is_clear(x: float, z: float) -> bool:
 ## The checkpoint's watchtowers and the ground under its bridge, kept clear of nature
 ## (see clear_checkpoint()).
 func in_checkpoint(x: float, z: float) -> bool:
-	var half := TOWER_SPAN * WORLD_SCALE["watchtower"] / 2.0 + 4.5
+	var half := TOWER_SPAN * game_scale("watchtower") / 2.0 + 4.5
 	return absf(x - CHECKPOINT_X) < 4.5 and absf(z - ROAD_Z) < half
 
 
@@ -291,7 +259,7 @@ func build_terrain() -> void:
 	terrain.owner = level
 	# Cliff walls around the edge, their rock face (the model's +Z side) facing in. They
 	# sit a little below the rising valley rim beside them.
-	var edge := HALF * TILE + TILE / 2 + 1.5 * WORLD_SCALE["terrain_cliff"]
+	var edge := HALF * TILE + TILE / 2 + 1.5 * game_scale("terrain_cliff")
 	var inner := HALF * TILE + TILE / 2 - 0.5
 	for k in range(-HALF, HALF + 1):
 		var x := k * TILE
@@ -317,7 +285,7 @@ func build_village() -> void:
 	place("Village", "cabin", -9.5, 0.0, 90.0)
 	place("Village", "cabin", -9.5, -11.0, 90.0)
 	place("Village", "well", -4.8, -5.5, 15.0)
-	var seg := 2.0 * WORLD_SCALE["fence_wood"]
+	var seg := 2.0 * game_scale("fence_wood")
 	for k in 4:
 		place("Village", "fence_wood", -14.0 + k * seg, 6.5)
 	place("Village", "fence_post", -14.0 + 3.5 * seg, 6.5)
@@ -332,8 +300,6 @@ func build_village() -> void:
 	place("Village", "tree_oak", -14.5, -5.5, 40.0)
 	for z in [-18.0, -6.0, 6.0, 18.0]:
 		place("Village", "lamp_post", -2.6, z)
-		var lantern := Vector3(0.42, 1.98, 0.0) * LAMP_SCALE
-		light("Lights", Vector3(-2.6 + lantern.x, ground(-2.6, z) + lantern.y, z), Color(1.0, 0.72, 0.38), 2.2, 9.0)
 	place("Village", "signpost", 2.6, 14.0, 160.0)
 
 
@@ -371,25 +337,18 @@ func build_pond() -> void:
 		place("Pond", "grass_tuft", 16.0 + cos(a) * 3.6, -8.0 + sin(a) * 3.6, rng.randf_range(0, 360))
 
 
-## A campfire model with its burning effect (flames, embers, smoke and firelight).
+## A campfire, burning (its prefab has the flames, embers, smoke and firelight).
 func campfire(group: String, x: float, z: float) -> void:
-	var model := place(group, "campfire", x, z)
-	var fire := Node3D.new()
-	fire.set_script(CAMPFIRE)
-	fire.name = "Fire"
-	model.add_child(fire)
-	fire.owner = level
-	fire.scale = Vector3.ONE / model.scale  # the effect is sized in world meters
+	place(group, "campfire", x, z)
 
 
+## A lamp post, lit (its prefab has the lantern's light).
 func lamp(group: String, x: float, z: float, rot := 0.0) -> void:
 	place(group, "lamp_post", x, z, rot)
-	var lantern := Basis(Vector3.UP, deg_to_rad(rot)) * (Vector3(0.42, 1.98, 0.0) * LAMP_SCALE)
-	light("Lights", Vector3(x + lantern.x, ground(x, z) + lantern.y, z + lantern.z), Color(1.0, 0.72, 0.38), 2.2, 9.0)
 
 
 func fence_line(group: String, x0: float, z: float, count: int, skip := -1) -> void:
-	var seg := 2.0 * WORLD_SCALE["fence_wood"]
+	var seg := 2.0 * game_scale("fence_wood")
 	for k in count:
 		if k != skip:
 			place(group, "fence_wood", x0 + k * seg, z)
@@ -414,14 +373,14 @@ func build_creek_crossing() -> void:
 
 ## Distance from the road's center line to each checkpoint watchtower.
 func checkpoint_offset() -> float:
-	return TOWER_SPAN * WORLD_SCALE["watchtower"] / 2.0
+	return TOWER_SPAN * game_scale("watchtower") / 2.0
 
 
 ## A checkpoint on the west road, by the wire roadblock: a watchtower either side of the
 ## road with their bridge gaps (the model's -Z side) facing each other, and a plank
 ## bridge high over the road between them. Each tower's ladder faces away from the road.
 func build_checkpoint() -> void:
-	var s: float = WORLD_SCALE["watchtower"]
+	var s: float = game_scale("watchtower")
 	var d := checkpoint_offset()
 	var south := place("Crossroads", "watchtower", CHECKPOINT_X, ROAD_Z - d, 180.0)
 	var north := place("Crossroads", "watchtower", CHECKPOINT_X, ROAD_Z + d, 0.0)
@@ -573,58 +532,29 @@ func build_pickups() -> void:
 	]
 	for it in weapons:
 		var y := 0.08 if it[0] == "plasma_rifle" else ground(it[1], it[2])  # on the bridge deck
-		var pk := pickup(it[1], it[2], y)
-		pk.kind = PICKUP.Kind.WEAPON
-		pk.weapon = load("res://weapons/%s.tres" % it[0])
-		pk.respawn_time = 30.0
+		var pk := pickup("weapon_" + it[0], it[1], it[2], y)
 		pk.random_spot = it[0] != "pistol"
-		pk.name = "weapon_" + it[0]
 	# Invulnerability: 15 s of no damage, at a random spot, back 60 s after it's taken.
-	var shield := pickup(-6.0, 20.0, ground(-6.0, 20.0))
-	shield.kind = PICKUP.Kind.POWERUP
-	shield.powerup = "invulnerability"
-	shield.duration = 15.0
-	shield.model = scene("powerup_invulnerability")
-	shield.model_scale = 1.6
-	shield.respawn_time = 60.0
+	var shield := pickup("powerup_invulnerability", -6.0, 20.0, ground(-6.0, 20.0))
 	shield.random_spot = true
-	shield.name = "powerup_invulnerability"
-	# Ammo: [type, amount, model, positions]
-	var ammo := [
-		["bullets", 30, "pickup_ammo_bullets", [Vector2(2.5, 19), Vector2(-3, 9), Vector2(6, -13), Vector2(-12, 12), Vector2(22, 9)]],
-		["shells", 8, "pickup_ammo_shells", [Vector2(-7.5, -7), Vector2(-14, 4), Vector2(4, -20), Vector2(13, -18)]],
-		["rockets", 3, "pickup_ammo_rockets", [Vector2(-4.5, -30), Vector2(9, -27), Vector2(21, 25)]],
-		["cells", 40, "pickup_ammo_cells", [Vector2(12, -11), Vector2(21, -13), Vector2(-20, -18), Vector2(-22, 20)]],
+	# Ammo and health: [prefab, name, positions] (amounts and models are the prefabs').
+	var supplies := [
+		["ammo_bullets", "ammo_bullets", [Vector2(2.5, 19), Vector2(-3, 9), Vector2(6, -13), Vector2(-12, 12), Vector2(22, 9)]],
+		["ammo_shells", "ammo_shells", [Vector2(-7.5, -7), Vector2(-14, 4), Vector2(4, -20), Vector2(13, -18)]],
+		["ammo_rockets", "ammo_rockets", [Vector2(-4.5, -30), Vector2(9, -27), Vector2(21, 25)]],
+		["ammo_cells", "ammo_cells", [Vector2(12, -11), Vector2(21, -13), Vector2(-20, -18), Vector2(-22, 20)]],
 		# outer areas
-		["bullets", 30, "pickup_ammo_bullets", [Vector2(-24, 37), Vector2(24, 37), Vector2(0, -44), Vector2(44, -24), Vector2(-46, 8)]],
-		["shells", 8, "pickup_ammo_shells", [Vector2(-40, 51.5), Vector2(34, 54.5), Vector2(-30, -29)]],
-		["rockets", 3, "pickup_ammo_rockets", [Vector2(-44, 48.5), Vector2(-38.5, -49)]],
-		["cells", 40, "pickup_ammo_cells", [Vector2(36, -44.5), Vector2(-26, -46), Vector2(48, 8)]],
-	]
-	for a in ammo:
-		for v in a[3]:
-			var pk := pickup(v.x, v.y, ground(v.x, v.y))
-			pk.kind = PICKUP.Kind.AMMO
-			pk.ammo_type = a[0]
-			pk.amount = a[1]
-			pk.model = scene(a[2])
-			pk.respawn_time = 15.0
-			pk.name = "ammo_" + a[0]
-	# Health: [amount, model, scale, positions]
-	var health := [
-		[40, "pickup_medkit", 1.4, [Vector2(-30, 46.5), Vector2(-36, -46.5), Vector2(40, 54.5), Vector2(-6.5, 1.5)]],
-		[15, "pickup_health_vial", 2.0, [Vector2(12, -15), Vector2(1.5, -40), Vector2(24, 30), Vector2(-22, 28.5),
+		["ammo_bullets", "ammo_bullets", [Vector2(-24, 37), Vector2(24, 37), Vector2(0, -44), Vector2(44, -24), Vector2(-46, 8)]],
+		["ammo_shells", "ammo_shells", [Vector2(-40, 51.5), Vector2(34, 54.5), Vector2(-30, -29)]],
+		["ammo_rockets", "ammo_rockets", [Vector2(-44, 48.5), Vector2(-38.5, -49)]],
+		["ammo_cells", "ammo_cells", [Vector2(36, -44.5), Vector2(-26, -46), Vector2(48, 8)]],
+		["health_medkit", "health", [Vector2(-30, 46.5), Vector2(-36, -46.5), Vector2(40, 54.5), Vector2(-6.5, 1.5)]],
+		["health_vial", "health", [Vector2(12, -15), Vector2(1.5, -40), Vector2(24, 30), Vector2(-22, 28.5),
 			Vector2(-14, -24), Vector2(44, 20)]],
 	]
-	for h in health:
-		for v in h[3]:
-			var pk := pickup(v.x, v.y, ground(v.x, v.y))
-			pk.kind = PICKUP.Kind.HEALTH
-			pk.amount = h[0]
-			pk.model = scene(h[1])
-			pk.model_scale = h[2]
-			pk.respawn_time = 25.0
-			pk.name = "health"
+	for sup in supplies:
+		for v in sup[2]:
+			pickup(sup[0], v.x, v.y, ground(v.x, v.y)).name = sup[1]
 	# Gems: collectibles tucked around every landmark (and a few out in the wilds), taken
 	# for good. A y of -1 means on the ground; otherwise on a bridge deck (-2: the
 	# checkpoint's bridge, high over the west road).
@@ -645,23 +575,27 @@ func build_pickups() -> void:
 	for gm in gems:
 		var y: float = ground(gm[0], gm[1]) if gm[2] == -1 else gm[2]
 		if gm[2] == -2:
-			y = ground(CHECKPOINT_X, ROAD_Z - checkpoint_offset()) + TOWER_DECK * WORLD_SCALE["watchtower"] - 0.2
-		var pk := pickup(gm[0], gm[1], y)
-		pk.kind = PICKUP.Kind.GEM
-		pk.amount = 1
-		pk.model = scene("pickup_gem")
-		pk.model_scale = 1.6
-		pk.one_shot = true
-		pk.name = "gem"
+			y = ground(CHECKPOINT_X, ROAD_Z - checkpoint_offset()) + TOWER_DECK * game_scale("watchtower") - 0.2
+		pickup("gem", gm[0], gm[1], y)
 
 
-func pickup(x: float, z: float, y: float) -> Area3D:
-	var pk := Area3D.new()
-	pk.set_script(PICKUP)
+## A pickup from its prefab (named after it), placed at (x, y, z).
+func pickup(name: String, x: float, z: float, y: float) -> Area3D:
+	var pk: Area3D = prefab(name).instantiate()
 	pk.position = Vector3(x, y, z)
+	pk.name = name
 	groups["Pickups"].add_child(pk, true)
 	pk.owner = level
 	return pk
+
+
+## An enemy from its prefab, `lift` meters above the ground at (x, z).
+func enemy(name: String, node_name: String, v: Vector2, lift: float) -> void:
+	var e: Node3D = prefab(name).instantiate()
+	e.name = node_name
+	e.position = Vector3(v.x, ground(v.x, v.y) + lift, v.y)
+	groups["Enemies"].add_child(e, true)
+	e.owner = level
 
 
 ## Floating eyes, roughly one per area, three golems in the far north (the ruins,
@@ -671,26 +605,11 @@ func pickup(x: float, z: float, y: float) -> Area3D:
 func build_enemies() -> void:
 	for v in [Vector2(0, -30), Vector2(16, -14), Vector2(26, 12), Vector2(-26, 12), Vector2(-36, 50),
 			Vector2(38, 48), Vector2(-36, -42), Vector2(-30, -49), Vector2(32, -40)]:
-		var eye := CharacterBody3D.new()
-		eye.set_script(EYE)
-		eye.name = "FloatingEye"
-		eye.position = Vector3(v.x, ground(v.x, v.y) + 2.6, v.y)
-		groups["Enemies"].add_child(eye, true)
-		eye.owner = level
+		enemy("floating_eye", "FloatingEye", v, 2.6)
 	for v in [Vector2(1.5, -29.0), Vector2(-36.0, -44.0), Vector2(32.0, -31.0)]:
-		var golem := CharacterBody3D.new()
-		golem.set_script(GOLEM)
-		golem.name = "Golem"
-		golem.position = Vector3(v.x, ground(v.x, v.y) + 0.85, v.y)
-		groups["Enemies"].add_child(golem, true)
-		golem.owner = level
+		enemy("golem", "Golem", v, 0.85)
 	for v in [Vector2(40, 24), Vector2(32, -12), Vector2(-56, 0), Vector2(-72, -28), Vector2(52, -64)]:
-		var spider := CharacterBody3D.new()
-		spider.set_script(SPIDER)
-		spider.name = "Spider"
-		spider.position = Vector3(v.x, ground(v.x, v.y) + 0.1, v.y)
-		groups["Enemies"].add_child(spider, true)
-		spider.owner = level
+		enemy("spider", "Spider", v, 0.1)
 
 
 ## Two linked portals, each facing (+Z) back along its road: one at the west end of the
@@ -699,8 +618,7 @@ func build_portals() -> void:
 	var spots := {"PortalWest": [-50.0, ROAD_Z, 90.0], "PortalNorth": [0.0, -50.0, 0.0]}
 	for n in spots:
 		var s: Array = spots[n]
-		var p := Node3D.new()
-		p.set_script(PORTAL)
+		var p: Node3D = prefab("portal").instantiate()
 		p.name = n
 		p.position = Vector3(s[0], ground(s[0], s[1]), s[1])
 		p.rotation_degrees.y = s[2]

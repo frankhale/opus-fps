@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://assets/scenery/rock_cluster.glb" id="model"]
+
+[node name="rock_cluster" instance=ExtResource("model")]
+transform = Transform3D(1.6, 0, 0, 0, 1.6, 0, 0, 0, 1.6, 0.0, 0.0, 0.0)

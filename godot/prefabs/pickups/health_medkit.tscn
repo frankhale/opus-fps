@@ -1,0 +1,11 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/pickup.gd" id="1_dmwpi"]
+[ext_resource type="PackedScene" path="res://assets/pickups/pickup_medkit.glb" id="2_q0ant"]
+
+[node name="health_medkit" type="Area3D" unique_id=179442744]
+script = ExtResource("1_dmwpi")
+kind = 2
+amount = 40
+model = ExtResource("2_q0ant")
+respawn_time = 25.0

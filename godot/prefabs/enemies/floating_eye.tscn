@@ -1,0 +1,14 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/enemies/floating_eye.gd" id="1_k6j05"]
+[ext_resource type="Script" path="res://scripts/editor_preview.gd" id="2_1hpl2"]
+[ext_resource type="PackedScene" path="res://assets/enemies/enemy_floating_eye.glb" id="3_0gplh"]
+
+[node name="floating_eye" type="CharacterBody3D" unique_id=2034955100]
+script = ExtResource("1_k6j05")
+model_scale = 1.6
+
+[node name="EditorPreview" type="Node3D" parent="." unique_id=960583703]
+transform = Transform3D(-1.6, 0, -1.3987645e-07, 0, 1.6, 0, 1.3987645e-07, 0, -1.6, 0, 0, 0)
+script = ExtResource("2_1hpl2")
+model = ExtResource("3_0gplh")

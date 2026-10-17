@@ -1,0 +1,12 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://assets/scenery/lamp_post.glb" id="model"]
+
+[node name="lamp_post" instance=ExtResource("model")]
+transform = Transform3D(1.3, 0, 0, 0, 1.3, 0, 0, 0, 1.3, 0.0, 0.0, 0.0)
+
+[node name="Light" type="OmniLight3D" parent="."]
+transform = Transform3D(0.769231, 0, 0, 0, 0.769231, 0, 0, 0, 0.769231, 0.42, 1.98, 0.0)
+light_color = Color(1.0, 0.72, 0.38, 1)
+light_energy = 2.2
+omni_range = 9.0

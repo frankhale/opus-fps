@@ -1,0 +1,8 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://assets/scenery/gas_can.glb" id="model"]
+[ext_resource type="Script" path="res://scripts/gas_can.gd" id="script"]
+
+[node name="gas_can" instance=ExtResource("model")]
+transform = Transform3D(1.2, 0, 0, 0, 1.2, 0, 0, 0, 1.2, 0.0, 0.0, 0.0)
+script = ExtResource("script")

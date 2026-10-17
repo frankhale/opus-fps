@@ -1,0 +1,12 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/pickup.gd" id="1_u5ds4"]
+[ext_resource type="PackedScene" path="res://assets/pickups/pickup_gem.glb" id="2_eipt6"]
+
+[node name="gem" type="Area3D" unique_id=248847538]
+script = ExtResource("1_u5ds4")
+kind = 3
+amount = 1
+model = ExtResource("2_eipt6")
+model_scale = 1.6
+one_shot = true

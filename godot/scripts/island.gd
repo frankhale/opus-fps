@@ -23,10 +23,10 @@ extends Node3D
 ## broken walls and columns under Ruins (move the group to move the whole site); the
 ## creatures (the shadow cat roams the island, the lynx ranger and a dachshund potter
 ## about on it, and the arcane eye and a jellyfish float over it); and PlayerStart, where
-## the player starts and comes back after dying. In the editor the creatures show their
-## models (previews only, not saved). The ground is levelled round wherever Ruins stands,
-## and the group settles onto that level; after moving it, press Rebuild ground in the
-## Inspector (or reopen the scene) to re-level it.
+## the player starts and comes back after dying. They're instances of the prefab library
+## (res://prefabs/), so the creatures show their models in the editor. The ground is
+## levelled round wherever Ruins stands, and the group settles onto that level; after
+## moving it, press Rebuild ground in the Inspector (or reopen the scene) to re-level it.
 
 const SEED := 2024
 ## Mean distance from the middle to the waterline, and how far it wanders either way.
@@ -96,8 +96,8 @@ func _ready() -> void:
 
 
 ## Builds the ground, sea and walls (freeing any built before; the saved nodes stay), sets
-## the ruins on their levelled ground, and readies the creatures: in the game, keeping
-## them to where they may go, and in the editor, giving them a preview of their model.
+## the ruins on their levelled ground, and in the game keeps the creatures to where they
+## may go.
 func build() -> void:
 	for c in get_children():
 		if c.owner == null:  # built here, not saved in the scene
@@ -112,11 +112,9 @@ func build() -> void:
 	_build_ground()
 	_build_sea()
 	_build_walls()
-	for c in get_children():
-		if c is CharacterBody3D:
-			if Engine.is_editor_hint():
-				_preview(c)
-			else:
+	if not Engine.is_editor_hint():
+		for c in get_children():
+			if c is CharacterBody3D:
 				_keep_on_island(c)
 	if not Engine.is_editor_hint() and ResourceLoader.exists(SURF_SOUND):
 		var surf := AudioStreamPlayer.new()
@@ -303,21 +301,6 @@ func _keep_on_island(creature: Node) -> void:
 	else:
 		var shore := LYNX_SHORE if creature is LynxRanger else DOG_SHORE if creature is Dachshund else CAT_SHORE
 		creature.can_stand = func(p: Vector3) -> bool: return inland(p.x, p.z) > shore
-
-
-## In the editor, shows a creature's model (its script's MODEL) on it, facing the way it
-## will in the game. Not saved: the creature builds its own when the game runs.
-func _preview(creature: Node3D) -> void:
-	for c in creature.get_children():
-		if c.owner == null:
-			c.free()
-	var model: PackedScene = creature.get_script().get_script_constant_map().get("MODEL")
-	if model == null:
-		return
-	var inst := model.instantiate() as Node3D
-	if not creature is Jellyfish:
-		inst.rotation.y = PI  # the models face their +Z; the creatures face -Z
-	creature.add_child(inst)
 
 
 ## Puts the player at PlayerStart (on the ground there, facing the way it faces), and

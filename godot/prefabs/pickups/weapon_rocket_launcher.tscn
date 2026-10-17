@@ -1,0 +1,10 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/pickup.gd" id="1_qn684"]
+[ext_resource type="Resource" path="res://weapons/rocket_launcher.tres" id="2_n7s7v"]
+
+[node name="weapon_rocket_launcher" type="Area3D" unique_id=1674585875]
+script = ExtResource("1_qn684")
+kind = 0
+weapon = ExtResource("2_n7s7v")
+respawn_time = 30.0

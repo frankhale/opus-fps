@@ -1,0 +1,10 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/pickup.gd" id="1_ddrvk"]
+[ext_resource type="PackedScene" path="res://assets/pickups/pickup_ammo_cells.glb" id="2_x7e3e"]
+
+[node name="ammo_cells" type="Area3D" unique_id=983734287]
+script = ExtResource("1_ddrvk")
+ammo_type = "cells"
+amount = 40
+model = ExtResource("2_x7e3e")

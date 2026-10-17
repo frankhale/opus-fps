@@ -1,0 +1,16 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/enemies/spider.gd" id="1_e1tyj"]
+[ext_resource type="Script" path="res://scripts/editor_preview.gd" id="2_53qgd"]
+[ext_resource type="PackedScene" path="res://assets/enemies/enemy_spider.glb" id="3_p32mx"]
+
+[node name="spider" type="CharacterBody3D" unique_id=743710834]
+script = ExtResource("1_e1tyj")
+max_health = 70.0
+model_scale = 1.25
+knockback = 0.12
+
+[node name="EditorPreview" type="Node3D" parent="." unique_id=964484292]
+transform = Transform3D(-1.25, 0, -1.09278474e-07, 0, 1.25, 0, 1.09278474e-07, 0, -1.25, 0, 0, 0)
+script = ExtResource("2_53qgd")
+model = ExtResource("3_p32mx")

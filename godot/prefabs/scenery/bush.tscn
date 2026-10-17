@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://assets/scenery/bush.glb" id="model"]
+
+[node name="bush" instance=ExtResource("model")]
+transform = Transform3D(1.5, 0, 0, 0, 1.5, 0, 0, 0, 1.5, 0.0, 0.0, 0.0)

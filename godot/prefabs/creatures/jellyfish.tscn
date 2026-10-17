@@ -1,0 +1,12 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/enemies/jellyfish.gd" id="1_10wit"]
+[ext_resource type="Script" path="res://scripts/editor_preview.gd" id="2_oafdl"]
+[ext_resource type="PackedScene" path="res://assets/enemies/enemy_jellyfish.glb" id="3_8k5y4"]
+
+[node name="jellyfish" type="CharacterBody3D" unique_id=526188511]
+script = ExtResource("1_10wit")
+
+[node name="EditorPreview" type="Node3D" parent="." unique_id=1356093852]
+script = ExtResource("2_oafdl")
+model = ExtResource("3_8k5y4")

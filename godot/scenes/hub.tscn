@@ -2,28 +2,29 @@
 
 [ext_resource type="Script" path="res://scripts/hub.gd" id="1_hub"]
 [ext_resource type="Script" path="res://scripts/portal.gd" id="2_portal"]
+[ext_resource type="PackedScene" path="res://prefabs/scenery/portal.tscn" id="2_w6xti"]
 
-[node name="Hub" type="Node3D"]
+[node name="Hub" type="Node3D" unique_id=322641886]
 script = ExtResource("1_hub")
 
-[node name="PlayerStart" type="Marker3D" parent="."]
+[node name="PlayerStart" type="Marker3D" parent="." unique_id=1892253203]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 14)
 
-[node name="Portals" type="Node3D" parent="."]
+[node name="Portals" type="Node3D" parent="." unique_id=599248408]
 
-[node name="PortalGallery" type="Node3D" parent="Portals"]
+[node name="PortalGallery" type="Node3D" parent="Portals" unique_id=1034574426 instance=ExtResource("2_w6xti")]
 transform = Transform3D(0.874157, 0, -0.485643, 0, 1, 0, 0.485643, 0, 0.874157, -10, 0, -4)
 script = ExtResource("2_portal")
 level = "gallery"
 title = "Gallery"
 
-[node name="PortalWorld" type="Node3D" parent="Portals"]
+[node name="PortalWorld" type="Node3D" parent="Portals" unique_id=1710352935 instance=ExtResource("2_w6xti")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -8)
 script = ExtResource("2_portal")
 level = "world"
 title = "Main Game"
 
-[node name="PortalIsland" type="Node3D" parent="Portals"]
+[node name="PortalIsland" type="Node3D" parent="Portals" unique_id=949378680 instance=ExtResource("2_w6xti")]
 transform = Transform3D(0.874157, 0, 0.485643, 0, 1, 0, -0.485643, 0, 0.874157, 10, 0, -4)
 script = ExtResource("2_portal")
 level = "island"

@@ -1,0 +1,13 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/enemies/dachshund.gd" id="1_0d7yi"]
+[ext_resource type="Script" path="res://scripts/editor_preview.gd" id="2_nsl2d"]
+[ext_resource type="PackedScene" path="res://assets/enemies/enemy_dachshund.glb" id="3_ddiqs"]
+
+[node name="dachshund" type="CharacterBody3D" unique_id=938267486]
+script = ExtResource("1_0d7yi")
+
+[node name="EditorPreview" type="Node3D" parent="." unique_id=857189810]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, 0)
+script = ExtResource("2_nsl2d")
+model = ExtResource("3_ddiqs")

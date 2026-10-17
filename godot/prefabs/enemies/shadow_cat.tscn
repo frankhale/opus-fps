@@ -1,0 +1,15 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/enemies/shadow_cat.gd" id="1_f1m2w"]
+[ext_resource type="Script" path="res://scripts/editor_preview.gd" id="2_w1cke"]
+[ext_resource type="PackedScene" path="res://assets/enemies/enemy_shadow_cat.glb" id="3_6f5fg"]
+
+[node name="shadow_cat" type="CharacterBody3D" unique_id=1551622556]
+script = ExtResource("1_f1m2w")
+max_health = 90.0
+knockback = 0.12
+
+[node name="EditorPreview" type="Node3D" parent="." unique_id=763387391]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, 0)
+script = ExtResource("2_w1cke")
+model = ExtResource("3_6f5fg")

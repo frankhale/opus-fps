@@ -1,0 +1,10 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/pickup.gd" id="1_xwgug"]
+[ext_resource type="Resource" path="res://weapons/plasma_rifle.tres" id="2_272xi"]
+
+[node name="weapon_plasma_rifle" type="Area3D" unique_id=1438227817]
+script = ExtResource("1_xwgug")
+kind = 0
+weapon = ExtResource("2_272xi")
+respawn_time = 30.0

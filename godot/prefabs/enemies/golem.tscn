@@ -1,0 +1,20 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/enemies/golem.gd" id="1_f0uyu"]
+[ext_resource type="Script" path="res://scripts/editor_preview.gd" id="2_3stkb"]
+[ext_resource type="PackedScene" path="res://assets/enemies/enemy_golem.glb" id="3_qcsi7"]
+
+[node name="golem" type="CharacterBody3D" unique_id=1988088316]
+script = ExtResource("1_f0uyu")
+max_health = 320.0
+memory = 6.0
+respawn_time = 60.0
+model_scale = 1.15
+knockback = 0.02
+loot_drops = Vector2i(2, 3)
+gem_drops = 3
+
+[node name="EditorPreview" type="Node3D" parent="." unique_id=821256994]
+transform = Transform3D(-1.15, 0, -1.0053619e-07, 0, 1.15, 0, 1.0053619e-07, 0, -1.15, 0, 0, 0)
+script = ExtResource("2_3stkb")
+model = ExtResource("3_qcsi7")

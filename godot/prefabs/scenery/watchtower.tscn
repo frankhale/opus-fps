@@ -1,0 +1,12 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://assets/scenery/watchtower.glb" id="model"]
+[ext_resource type="Script" path="res://scripts/ladder.gd" id="ladder"]
+
+[node name="watchtower" instance=ExtResource("model")]
+transform = Transform3D(1.5, 0, 0, 0, 1.5, 0, 0, 0, 1.5, 0.0, 0.0, 0.0)
+
+[node name="Ladder" type="Area3D" parent="."]
+transform = Transform3D(1.0, 0, 0, 0, 1.0, 0, 0, 0, 1.0, 0.0, 0.0, 2.1)
+script = ExtResource("ladder")
+height = 4.7

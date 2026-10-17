@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://assets/terrain/terrain_path_cross.glb" id="model"]
+
+[node name="terrain_path_cross" instance=ExtResource("model")]
+transform = Transform3D(1.0, 0, 0, 0, 1.0, 0, 0, 0, 1.0, 0.0, 0.0, 0.0)

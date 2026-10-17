@@ -1,0 +1,10 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/pickup.gd" id="1_4mte0"]
+[ext_resource type="Resource" path="res://weapons/rifle.tres" id="2_k0ect"]
+
+[node name="weapon_rifle" type="Area3D" unique_id=1072773705]
+script = ExtResource("1_4mte0")
+kind = 0
+weapon = ExtResource("2_k0ect")
+respawn_time = 30.0
