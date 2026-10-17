@@ -10,14 +10,23 @@ extends Node3D
 ## The ground is one mesh built here from height(), painted like the main level's terrain
 ## (scripts/terrain.gd): the pack's palette material, dimmed the same, with each face
 ## mapped onto one swatch as the tiles are: sand on the beach and under the water,
-## grass inland, so the grass edge steps along the faces. The sea (materials/sea.gdshader) is a 1.6 km sheet
-## at height 0 that reaches the fog on every side, with surf rolling in to shore.
+## grass inland, so the grass edge steps along the faces. The sea
+## (materials/sea.gdshader) is a 1.6 km sheet at height 0 that reaches the fog on every
+## side, with surf rolling in to shore.
 ## You can wade out until the water is about 1 m deep, where invisible walls follow the
-## coast round. Rocks sit along the shore (the surf foams round them), with a few trees
-## and bushes on the grass. The shadow cat roams the island, the lynx ranger and a
-## dachshund potter about on it, and the arcane eye and a jellyfish float over it. Everything is built
-## when the node enters the tree (also in the editor, apart from the creatures), so the
-## scene file stays tiny. The player starts on the south beach, looking out to sea.
+## coast round. All of that (ground, sea, walls and the surf's sound) is built here when
+## the node enters the tree, also in the editor.
+##
+## Everything standing on the island is an ordinary node saved in scenes/island.tscn, to
+## move, turn, add or delete in the editor: rocks along the shore (the surf foams round
+## them), trees, bushes and grass under Props; the ruins of an overgrown gateway among
+## broken walls and columns under Ruins (move the group to move the whole site); the
+## creatures (the shadow cat roams the island, the lynx ranger and a dachshund potter
+## about on it, and the arcane eye and a jellyfish float over it); and PlayerStart, where
+## the player starts and comes back after dying. In the editor the creatures show their
+## models (previews only, not saved). The ground is levelled round wherever Ruins stands,
+## and the group settles onto that level; after moving it, press Rebuild ground in the
+## Inspector (or reopen the scene) to re-level it.
 
 const SEED := 2024
 ## Mean distance from the middle to the waterline, and how far it wanders either way.
@@ -50,56 +59,34 @@ const SEA_SIZE := 1600.0
 const WADE := 9.0
 const WALL_SEGMENTS := 72
 const WALL_HEIGHT := 10.0
-## Where the player starts: on the beach this far up from the waterline, due south.
-const SPAWN_INLAND := 6.0
 
 const GROUND_MATERIAL := preload("res://materials/ps1_palette.tres")
 const SEA_SHADER := preload("res://materials/sea.gdshader")
 const SURF_SOUND := "res://assets/sfx/surf_loop.wav"
 
-## Scenery: model, how many, how far from the waterline (min, max, inland positive),
-## scale range, and how deep (m, times the scale) to sink it into the ground.
-const PROPS := [
-	["rock_large", 4, -4.0, 2.0, 0.9, 1.5, 0.35],
-	["rock_cluster", 6, -5.0, 6.0, 0.8, 1.4, 0.15],
-	["rock_small", 12, -6.0, 8.0, 0.8, 1.6, 0.08],
-	["tree_oak", 4, 17.0, 30.0, 1.0, 1.3, 0.1],
-	["tree_pine", 3, 18.0, 32.0, 1.0, 1.25, 0.1],
-	["bush_tall", 4, 13.0, 30.0, 0.9, 1.2, 0.05],
-	["bush", 8, 11.0, 30.0, 0.9, 1.3, 0.05],
-	["grass_tuft", 30, 9.0, 32.0, 1.0, 1.6, 0.02],
-]
-## Nothing is placed this close to where the player starts.
-const SPAWN_CLEAR := 7.0
-## The shadow cat starts this far round the coast from the player's start (radians) and
-## this far inland, and keeps at least CAT_SHORE meters from the water as it wanders.
-const CAT_ANGLE := -0.25
-const CAT_INLAND := 10.0
+## The ground is levelled for the ruins (the Ruins node), to the natural ground's height
+## at the group's origin, out to RUIN_FLAT meters round it, blending back into the hills
+## by RUIN_BLEND.
+const RUIN_FLAT := 8.0
+const RUIN_BLEND := 14.0
+## How far the walking creatures keep from the water, and how far past the waterline
+## the jellyfish may swim out over the shallows (meters).
 const CAT_SHORE := 3.0
-## The arcane eye starts this far round the coast from the player's start (radians) and
-## this far inland, and drifts anywhere over the island.
-const EYE_ANGLE := 0.4
-const EYE_INLAND := 16.0
-## The lynx ranger starts this far round the coast from the player's start (radians) and
-## this far inland, and keeps at least LYNX_SHORE meters from the water as it strolls.
-const LYNX_ANGLE := 0.15
-const LYNX_INLAND := 12.0
 const LYNX_SHORE := 4.0
-## The jellyfish starts this far round the coast from the player's start (radians) and
-## this far inland, and swims anywhere over the island and out over the shallows up to
-## JELLY_OFFSHORE meters past the waterline.
-const JELLY_ANGLE := -0.7
-const JELLY_INLAND := 6.0
-const JELLY_OFFSHORE := 6.0
-## The dachshund starts this far round the coast from the player's start (radians) and
-## this far inland, and keeps at least DOG_SHORE meters from the water.
-const DOG_ANGLE := -0.25
-const DOG_INLAND := 9.0
 const DOG_SHORE := 3.0
+const JELLY_OFFSHORE := 6.0
+
+## Inspector button: rebuilds the ground (and so re-levels it round the ruins).
+@export_tool_button("Rebuild ground", "Reload") var rebuild_ground := build
 
 var _coast := []  # [harmonic, amplitude, phase] for the coastline's wander
 var _noise: FastNoiseLite
 var _hills: FastNoiseLite
+## The ruins' site and the level the ground is flattened to round it (no levelling
+## without a Ruins node).
+var _ruin_at := Vector2.ZERO
+var _ruin_level := 0.0
+var _levelled := false
 
 
 func _ready() -> void:
@@ -108,19 +95,29 @@ func _ready() -> void:
 		_place_player.call_deferred()  # once the world around it is ready
 
 
+## Builds the ground, sea and walls (freeing any built before; the saved nodes stay), sets
+## the ruins on their levelled ground, and readies the creatures: in the game, keeping
+## them to where they may go, and in the editor, giving them a preview of their model.
 func build() -> void:
 	for c in get_children():
-		c.free()
+		if c.owner == null:  # built here, not saved in the scene
+			c.free()
 	_setup_noise()
+	var ruins := get_node_or_null("Ruins") as Node3D
+	_levelled = ruins != null
+	if ruins:
+		_ruin_at = Vector2(ruins.position.x, ruins.position.z)
+		_ruin_level = _natural_height(ruins.position.x, ruins.position.z)
+		ruins.position.y = _ruin_level
 	_build_ground()
 	_build_sea()
 	_build_walls()
-	_scatter_props()
-	_place_cat()
-	_place_lynx()
-	_place_dog()
-	_place_eye()
-	_place_jellyfish()
+	for c in get_children():
+		if c is CharacterBody3D:
+			if Engine.is_editor_hint():
+				_preview(c)
+			else:
+				_keep_on_island(c)
 	if not Engine.is_editor_hint() and ResourceLoader.exists(SURF_SOUND):
 		var surf := AudioStreamPlayer.new()
 		surf.name = "Surf"
@@ -128,7 +125,6 @@ func build() -> void:
 		surf.volume_db = -10.0
 		surf.autoplay = true
 		add_child(surf)
-
 
 func _setup_noise() -> void:
 	var rng := RandomNumberGenerator.new()
@@ -166,8 +162,17 @@ func inland(x: float, z: float) -> float:
 	return coast_radius(atan2(z, x)) - Vector2(x, z).length()
 
 
-## Ground height at (x, z), with the sea's surface at 0.
+## Ground height at (x, z), with the sea's surface at 0: the island's natural ground,
+## levelled round the ruins.
 func height(x: float, z: float) -> float:
+	var h := _natural_height(x, z)
+	var d := Vector2(x, z).distance_to(_ruin_at)
+	if _levelled and d < RUIN_BLEND:
+		h = lerpf(h, _ruin_level, smoothstep(RUIN_BLEND, RUIN_FLAT, d))
+	return h
+
+
+func _natural_height(x: float, z: float) -> float:
 	var s := inland(x, z)
 	var bump := _noise.get_noise_2d(x, z)
 	if s >= 0.0:
@@ -288,129 +293,40 @@ func _build_walls() -> void:
 		walls.add_child(shape)
 
 
-func _spawn_point() -> Vector3:
-	var angle := PI * 0.5  # due south (+Z)
-	var r := coast_radius(angle) - SPAWN_INLAND
-	return Vector3(0.0, 0.0, r)
+## Keeps a creature to where it may go: the walkers on dry land, clear of the water, and
+## the floaters over the island (the jellyfish also out over the shallows).
+func _keep_on_island(creature: Node) -> void:
+	if creature is Jellyfish:
+		creature.can_hover = func(p: Vector3) -> bool: return inland(p.x, p.z) > -JELLY_OFFSHORE
+	elif creature is ArcaneEye:
+		creature.can_hover = func(p: Vector3) -> bool: return inland(p.x, p.z) > 0.0
+	else:
+		var shore := LYNX_SHORE if creature is LynxRanger else DOG_SHORE if creature is Dachshund else CAT_SHORE
+		creature.can_stand = func(p: Vector3) -> bool: return inland(p.x, p.z) > shore
 
 
-func _scatter_props() -> void:
-	var rng := RandomNumberGenerator.new()
-	rng.seed = SEED + 2
-	var spawn := _spawn_point()
-	var props := Node3D.new()
-	props.name = "Props"
-	add_child(props)
-	for p in PROPS:
-		var scene: PackedScene = load("res://assets/scenery/%s.glb" % p[0])
-		var placed := 0
-		var tries := 0
-		while placed < p[1] and tries < 200:
-			tries += 1
-			var angle := rng.randf() * TAU
-			var r := coast_radius(angle) - rng.randf_range(p[2], p[3])
-			var x := cos(angle) * r
-			var z := sin(angle) * r
-			if Vector2(x - spawn.x, z - spawn.z).length() < SPAWN_CLEAR:
-				continue
-			var s := rng.randf_range(p[4], p[5])
-			var inst := scene.instantiate() as Node3D
-			inst.name = "%s_%d" % [p[0], placed]
-			inst.position = Vector3(x, height(x, z) - p[6] * s, z)
-			inst.rotation.y = rng.randf() * TAU
-			inst.scale = Vector3.ONE * s
-			props.add_child(inst)
-			placed += 1
+## In the editor, shows a creature's model (its script's MODEL) on it, facing the way it
+## will in the game. Not saved: the creature builds its own when the game runs.
+func _preview(creature: Node3D) -> void:
+	for c in creature.get_children():
+		if c.owner == null:
+			c.free()
+	var model: PackedScene = creature.get_script().get_script_constant_map().get("MODEL")
+	if model == null:
+		return
+	var inst := model.instantiate() as Node3D
+	if not creature is Jellyfish:
+		inst.rotation.y = PI  # the models face their +Z; the creatures face -Z
+	creature.add_child(inst)
 
 
-## The shadow cat (scripts/enemies/shadow_cat.gd), wandering the island on dry land.
-func _place_cat() -> void:
-	if Engine.is_editor_hint():
-		return  # an Enemy: it only runs in the game
-	var angle := PI * 0.5 + CAT_ANGLE
-	var r := coast_radius(angle) - CAT_INLAND
-	var x := cos(angle) * r
-	var z := sin(angle) * r
-	var cat := ShadowCat.new()
-	cat.name = "ShadowCat"
-	cat.position = Vector3(x, height(x, z) + 0.05, z)
-	cat.wander_radius = COAST_RADIUS
-	cat.can_stand = func(p: Vector3) -> bool: return inland(p.x, p.z) > CAT_SHORE
-	add_child(cat)
-
-
-## The lynx ranger (scripts/enemies/lynx_ranger.gd), strolling about on dry land.
-func _place_lynx() -> void:
-	if Engine.is_editor_hint():
-		return  # it only runs in the game
-	var angle := PI * 0.5 + LYNX_ANGLE
-	var r := coast_radius(angle) - LYNX_INLAND
-	var x := cos(angle) * r
-	var z := sin(angle) * r
-	var lynx := LynxRanger.new()
-	lynx.name = "LynxRanger"
-	lynx.position = Vector3(x, height(x, z) + 0.05, z)
-	lynx.wander_radius = COAST_RADIUS
-	lynx.can_stand = func(p: Vector3) -> bool: return inland(p.x, p.z) > LYNX_SHORE
-	add_child(lynx)
-
-
-## The dachshund (scripts/enemies/dachshund.gd), trotting about on dry land.
-func _place_dog() -> void:
-	if Engine.is_editor_hint():
-		return  # it only runs in the game
-	var angle := PI * 0.5 + DOG_ANGLE
-	var r := coast_radius(angle) - DOG_INLAND
-	var x := cos(angle) * r
-	var z := sin(angle) * r
-	var dog := Dachshund.new()
-	dog.name = "Dachshund"
-	dog.position = Vector3(x, height(x, z) + 0.05, z)
-	dog.wander_radius = COAST_RADIUS
-	dog.can_stand = func(p: Vector3) -> bool: return inland(p.x, p.z) > DOG_SHORE
-	add_child(dog)
-
-
-## The arcane eye (scripts/enemies/arcane_eye.gd), floating about over the island.
-func _place_eye() -> void:
-	if Engine.is_editor_hint():
-		return  # it only runs in the game
-	var angle := PI * 0.5 + EYE_ANGLE
-	var r := coast_radius(angle) - EYE_INLAND
-	var x := cos(angle) * r
-	var z := sin(angle) * r
-	var eye := ArcaneEye.new()
-	eye.name = "ArcaneEye"
-	eye.position = Vector3(x, height(x, z) + eye.hover_height, z)
-	eye.wander_radius = COAST_RADIUS
-	eye.can_hover = func(p: Vector3) -> bool: return inland(p.x, p.z) > 0.0
-	add_child(eye)
-
-
-## The jellyfish (scripts/enemies/jellyfish.gd), swimming through the air over the island
-## and the shallows, above the waves when it's out over the sea (at height 0).
-func _place_jellyfish() -> void:
-	if Engine.is_editor_hint():
-		return  # it only runs in the game
-	var angle := PI * 0.5 + JELLY_ANGLE
-	var r := coast_radius(angle) - JELLY_INLAND
-	var x := cos(angle) * r
-	var z := sin(angle) * r
-	var jelly := Jellyfish.new()
-	jelly.name = "Jellyfish"
-	jelly.floor_min = 0.0
-	jelly.position = Vector3(x, maxf(height(x, z), 0.0) + jelly.hover_height, z)
-	jelly.wander_radius = COAST_RADIUS
-	jelly.can_hover = func(p: Vector3) -> bool: return inland(p.x, p.z) > -JELLY_OFFSHORE
-	add_child(jelly)
-
-
-## Puts the player on the south beach looking out to sea (slightly along the shore),
-## and makes that where they come back after dying.
+## Puts the player at PlayerStart (on the ground there, facing the way it faces), and
+## makes that where they come back after dying.
 func _place_player() -> void:
 	var player := get_tree().get_first_node_in_group("player") as Node3D
-	if player == null:
+	var start := get_node_or_null("PlayerStart") as Node3D
+	if player == null or start == null:
 		return
-	var at := _spawn_point()
+	var at := start.global_position
 	at.y = height(at.x, at.z) + 0.1
-	player.set_spawn(Transform3D(Basis(Vector3.UP, PI + 0.45), at))
+	player.set_spawn(Transform3D(Basis(Vector3.UP, start.global_rotation.y), at))
