@@ -849,7 +849,6 @@ def ruins_pillar(b):
     v = b.lathe([(0.38, 0.3), (0.35, 1.5), (0.34, 2.7)], seg=8, color="lstone")
     b.jitter([x for x in v if x.co.z > 2.6], (0.04, 0.04, 0.35))
     b.paint(v, lambda f: {"olive": 1, "lstone": 1} if f.calc_center_median().z < 0.9 else {"lstone": 3, "stone": 1})
-    b.ico(0.3, 1, loc=(0.8, 0.5, 0.15), scale=(1.2, 1, 0.6), color="lstone", jit=0.05, floor=0)
 
 
 @asset("scenery")
@@ -2982,6 +2981,174 @@ def enemy_dachshund(b):
     m = mark()
     b.tube(tail, [0.034, 0.027, 0.02, 0.013, 0.0], seg=6, color=coat)
     skin_chain(m, [spine[0] + Vector((0, -0.06, 0))] + tail, ["hips"] + [f"tail_{k}" for k in range(len(tail) - 1)])
+
+
+@asset("scenery")
+def ruins_gate(b):
+    """An overgrown standing-stone gateway, faces -Y, about 5.1 m wide and 3.9 m tall:
+    two pillars of rough pale stone blocks, each with a glowing cyan rune channel
+    cracked with light down its front, carry a heavy split lintel and two capstones over
+    a 2 m wide opening with corbelled corners. Ivy spills over the top, front and back,
+    and trails down the stones on both sides, and flagstones sunk in moss pave the
+    threshold, with a carved marker stone and rubble in front."""
+    stone = {"lstone": 7, "stone": 1}
+    W = 0.35  # how far each pillar stands out from the middle beyond a 1.3 m opening
+
+    def block(x0, x1, z0, z1, y0=-0.42, y1=0.42, rot=(0, 0, 0), color=stone):
+        """A rough stone block spanning these ranges, chipped a little at the corners."""
+        return b.box((x1 - x0, y1 - y0, z1 - z0), ((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), rot=rot,
+                     color=color, cuts=1, jit=0.03)
+
+    # Left pillar: a tall slab in two courses, and an outer stone leaning against it.
+    with b.at((-W, 0, 0)):
+        block(-1.75, -0.65, 0.0, 1.45)
+        block(-1.72, -0.66, 1.45, 2.75, y0=-0.4, y1=0.43)
+        block(-2.3, -1.72, 0.0, 2.4, y0=-0.34, y1=0.34, rot=(0, -4, 0))
+
+    # Right pillar: a stack of smaller blocks on the inner side, set slightly in and out,
+    # beside a tall outer slab in two courses.
+    with b.at((W, 0, 0)):
+        for i, (z0, z1) in enumerate(((0.0, 0.62), (0.62, 1.22), (1.22, 1.82), (1.82, 2.32), (2.32, 2.75))):
+            d = 0.03 if i % 2 else -0.02
+            block(0.64 + d, 1.06, z0, z1, y0=-0.4 - d, y1=0.4)
+        block(1.06, 1.95, 0.0, 1.32)
+        block(1.08, 1.96, 1.32, 2.75, y0=-0.43, y1=0.41)
+
+    # The lintel, split into two great blocks of slightly different heights, and two
+    # capstones laid on top, one tipped a little.
+    block(-2.05 - W, 0.08, 2.75, 3.35, y0=-0.46, y1=0.44)
+    block(0.08, 2.05 + W, 2.75, 3.32, y0=-0.44, y1=0.46)
+    block(-1.85 - W, -0.05, 3.35, 3.85, y0=-0.4, y1=0.38, rot=(0, 2, 0))
+    block(0.02, 1.92 + W, 3.33, 3.88, y0=-0.38, y1=0.4, rot=(0, -1.5, 0))
+
+    # Corbels: wedges in the opening's top corners, rounding it off.
+    for s in (-1, 1):
+        b.box((0.42, 0.78, 0.42), (s * (0.66 + W), 0, 2.72), rot=(0, 45, 0), color=stone, jit=0.02)
+        b.box((0.24, 0.76, 0.24), (s * (0.5 + W), 0, 2.72), rot=(0, 45, 0), color=stone, jit=0.02)
+
+    def zigzag(x, z0, z1, wander, y, width, color, glow=False, forks=0):
+        """A jagged line up a face (at depth y) from z0 to z1 about x, with forks
+        branching off it."""
+        n = max(3, int((z1 - z0) / 0.18))
+        pts = [Vector((x + (b.rng.uniform(-wander, wander) if 0 < i < n else 0), y, z0 + (z1 - z0) * i / n))
+               for i in range(n + 1)]
+        for p0, p1 in zip(pts, pts[1:]):
+            b.beam(p0, p1, width, 0.012, color=color, glow=glow)
+        for _ in range(forks):
+            p0 = b.rng.choice(pts[1:-1])
+            p1 = p0 + Vector((b.rng.choice((-1, 1)) * wander * 1.2, 0, b.rng.uniform(0.08, 0.2)))
+            b.beam(p0, p1, width * 0.8, 0.012, color=color, glow=glow)
+
+    # Rune channels: a dark recess down the front of each pillar holding a glowing cyan
+    # seam, crackling with jagged white light.
+    for x in (-1.2 - W, 1.5 + W):
+        b.box((0.3, 0.06, 2.2), (x, -0.43, 1.42), color="dstone")
+        b.box((0.2, 0.04, 2.08), (x, -0.45, 1.42), color="cyan", glow=True)
+        zigzag(x, 0.4, 2.44, 0.065, -0.474, 0.034, "white", glow=True, forks=5)
+
+    # Cracks across the stones' faces.
+    for x, z0, z1 in ((-0.85 - W, 0.3, 1.2), (-1.55 - W, 1.7, 2.6), (-2.05 - W, 0.4, 1.6), (0.8 + W, 1.3, 2.2),
+                      (1.85 + W, 0.2, 1.0), (-1.0, 2.85, 3.3), (1.2, 2.8, 3.25), (0.5, 3.4, 3.8)):
+        zigzag(x, z0, z1, 0.07, -0.47 if z0 < 2.75 else -0.48, 0.016, "dstone", forks=1)
+
+    # Threshold: a bed of moss, through the gate and out in front, paved with worn
+    # flagstones, some missing.
+    moss = {"olive": 3, "grass": 2, "dgrass": 1}
+    b.cyl(1.0, 0.95, 0.06, seg=12, loc=(0, -0.75, 0.03), scale=(2.05 + W, 1.55, 1), color=moss, jit=0.02)
+    for y in (-2.0, -1.45, -0.9, -0.35, 0.2):
+        x = -1.9 - W + b.rng.uniform(0.0, 0.3)
+        while x < 1.9 + W:
+            w = b.rng.uniform(0.45, 0.75)
+            inside = abs(x + w / 2) < 0.6 + W or y < -0.5  # in the opening, or out in front
+            ring = ((x + w / 2) / (2.1 + W)) ** 2 + ((y + 0.75) / 1.6) ** 2 < 1.0
+            if inside and ring and b.rng.random() < 0.8:
+                b.box((w - 0.08, b.rng.uniform(0.42, 0.52), 0.1), (x + w / 2, y + b.rng.uniform(-0.04, 0.04), 0.06),
+                      rot=(0, 0, b.rng.uniform(-6, 6)), color={"lstone": 4, "stone": 2}, jit=0.015)
+            x += w
+
+    # A marker stone in front, carved with two rows of worn letters.
+    with b.at((-1.55 - W, -1.75, 0), (0, 0, 14)):
+        b.ico(1, 1, loc=(0, 0, 0.3), scale=(0.55, 0.22, 0.5), color=stone, jit=0.02, floor=0.0)
+        for row, z in ((0, 0.5), (1, 0.33)):
+            for k in range(4 - row):
+                x = -0.24 + k * 0.15 + row * 0.07
+                b.beam((x, -0.22, z - 0.05), (x + b.rng.uniform(-0.03, 0.03), -0.22, z + 0.05), 0.022, 0.02, color="dstone")
+                b.beam((x - 0.03, -0.22, z + b.rng.uniform(-0.03, 0.04)), (x + 0.04, -0.22, z + b.rng.uniform(-0.03, 0.04)),
+                       0.02, 0.02, color="dstone")
+
+    # Rubble: fallen blocks and stones to the right, and pebbles strewn about.
+    b.ico(0.42, 1, loc=(2.2 + W, -1.25, 0.22), scale=(1.1, 0.9, 0.8), color=stone, jit=0.07, floor=0.0)
+    b.ico(0.28, 1, loc=(2.55 + W, -0.6, 0.12), color=stone, jit=0.05, floor=0.0)
+    b.box((0.45, 0.35, 0.3), (1.75 + W, -1.95, 0.13), rot=(4, 0, 25), color=stone, jit=0.03)
+    for _ in range(9):
+        a = b.rng.uniform(0, 2 * math.pi)
+        r = b.rng.uniform(1.9, 2.6)
+        b.ico(b.rng.uniform(0.06, 0.12), 0, loc=(math.cos(a) * (r * 1.1 + W), -0.75 + math.sin(a) * r * 0.8, 0.03),
+              color=STONE, jit=0.02, floor=0.0)
+
+    # Ivy: leafy masses spilling over the lintel and capstones, vines trailing down the
+    # stones from them, front and back, and clumps at the pillars' feet. Each leaf is a
+    # low four-sided pyramid, tipped every which way.
+    leafy = {"grass": 3, "dgrass": 2, "lgrass": 2}
+
+    def leaf(p, size):
+        rot = (b.rng.uniform(-70, 70), b.rng.uniform(-70, 70), b.rng.uniform(0, 360))
+        b.cyl(size, 0, size * 0.5, seg=4, loc=p, rot=rot, color=leafy)
+
+    def clump(p, radius, n, size=0.2):
+        p = Vector(p)
+        for _ in range(n):
+            q = p + Vector([b.rng.uniform(-radius, radius) for _ in range(3)]) * 0.8
+            q.z = max(q.z, size * 1.2)  # however it tips, no leaf sinks below the ground
+            leaf(q, size * b.rng.uniform(0.8, 1.2))
+
+    def vine(top, length, y, lean=0.0):
+        """A vine trailing down a face (at depth y: negative the front, positive the
+        back) from `top`, a leaf pair every step standing off the face."""
+        p = Vector((top[0], y, top[1]))
+        out = -0.04 if y < 0 else 0.04
+        steps = int(length / 0.14)
+        for i in range(steps):
+            q = p + Vector((b.rng.uniform(-0.05, 0.05) + lean, 0, -0.14))
+            b.beam(p, q, 0.025, 0.025, color="olive")
+            for s in (-1, 1):
+                if b.rng.random() < 0.85:
+                    size = 0.17 * (1.0 - 0.35 * i / steps)
+                    leaf(q + Vector((s * size * 0.8, out, b.rng.uniform(-0.03, 0.03))), size)
+            p = q
+
+    def masses(x0, x1, z, y, chance=0.8):
+        x = x0
+        while x < x1:
+            if b.rng.random() < chance:
+                clump((x, y, z), 0.2, 6)
+            x += b.rng.uniform(0.16, 0.28)
+
+    # Front: over the capstones and the lintel's front edge, and trailing down the faces.
+    masses(-1.8 - W, -0.1, 3.86, -0.25)
+    masses(0.1, 1.85 + W, 3.9, -0.25)
+    masses(-1.95 - W, 1.95 + W, 3.36, -0.48)
+    for top, length, y, lean in (((-0.72 - W, 2.75), 2.2, -0.47, 0.004), ((-1.62 - W, 2.75), 0.9, -0.47, 0.0),
+                                 ((0.62 + W, 2.7), 1.6, -0.45, 0.0), ((1.92 + W, 2.75), 1.3, -0.47, 0.01),
+                                 ((-0.3, 3.3), 0.6, -0.49, 0.0), ((1.0, 3.3), 0.5, -0.49, 0.0),
+                                 ((-2.2 - W, 2.35), 1.0, -0.38, -0.01)):
+        vine(top, length, y, lean)
+    # Back: over the capstones' and the lintel's back edges, and down the backs of the
+    # pillars.
+    masses(-1.8 - W, -0.1, 3.86, 0.25, 0.7)
+    masses(0.1, 1.85 + W, 3.9, 0.25, 0.7)
+    masses(-1.95 - W, 1.95 + W, 3.34, 0.48)
+    for top, length, y, lean in (((-0.8 - W, 2.75), 1.9, 0.47, 0.006), ((-1.5 - W, 2.75), 1.4, 0.47, -0.004),
+                                 ((0.75 + W, 2.75), 2.1, 0.45, -0.004), ((1.6 + W, 2.75), 1.1, 0.46, 0.0),
+                                 ((-0.6, 3.3), 0.5, 0.49, 0.0), ((0.4, 3.3), 0.7, 0.49, 0.0),
+                                 ((1.2, 3.3), 0.45, 0.49, 0.0), ((-2.2 - W, 2.35), 1.3, 0.38, -0.01)):
+        vine(top, length, y, lean)
+    # Clumps at the feet, front and back (none in the opening, which stays clear to walk
+    # through), and out among the flagstones and rubble.
+    for p in ((-1.1 - W, -0.55, 0.12), (1.2 + W, -0.55, 0.12), (1.95 + W, -0.55, 0.15),
+              (-2.15 - W, -0.45, 0.12), (-1.3 - W, -2.05, 0.08), (2.0 + W, -1.55, 0.1), (1.3, -2.15, 0.05),
+              (-1.2 - W, 0.55, 0.12), (1.4 + W, 0.55, 0.12), (-2.3 - W, 0.45, 0.1)):
+        clump(p, 0.28, 9, 0.2)
 
 
 # ---------------------------------------------------------------------------
