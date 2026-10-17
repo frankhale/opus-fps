@@ -2804,6 +2804,186 @@ def enemy_jellyfish(b):
         skin_hanging(m, root.z, TENT_LEN, [f"tentacle_{k}_{j}" for j in range(TENT_BONES)])
 
 
+@asset("enemies")
+def enemy_dachshund(b):
+    """Red smooth-haired dachshund, faces -Y, about 0.55 m tall to the top of its head and
+    1.45 m from nose to tail tip: a long low body with a deep chest, short sturdy legs,
+    a long muzzle with a black nose, big soft ears hanging past its jaw and a thin tail
+    sweeping back and curving up at the end.
+
+    Rigged for animation (rest pose as modeled, standing square). Sides are its own: l is +X.
+      hips (root, at the rump) > chest > neck > head > ear_<side>
+      chest > leg_f<side>_0 (shoulder to elbow) > leg_f<side>_1 (to wrist) > paw_f<side>
+      hips > leg_b<side>_0 (hip to hock) > leg_b<side>_1 (to ankle) > paw_b<side>
+      hips > tail_0 (root) > ... > tail_3 (tip)
+    The body blends from `hips` to `chest` along the back, so the spine can flex; the
+    claws follow their paws, and everything on the head follows `head`."""
+    coat = "orange"  # one solid red coat all over
+
+    # Layout shared by the skeleton and the mesh.
+    sides = {"l": 1, "r": -1}
+    spine = [Vector((0, 0.36, 0.3)), Vector((0, 0.06, 0.28)), Vector((0, -0.3, 0.3)),
+             Vector((0, -0.47, 0.46)), Vector((0, -0.69, 0.465))]  # rump, mid-back, withers, skull, nose
+    ears = {side: (Vector((s * 0.082, -0.47, 0.54)), Vector((s * 0.098, -0.5, 0.345))) for side, s in sides.items()}
+    front = {side: [Vector((s * 0.085, -0.25, 0.25)), Vector((s * 0.095, -0.24, 0.13)),
+                    Vector((s * 0.09, -0.28, 0.055)), Vector((s * 0.1, -0.36, 0.026))] for side, s in sides.items()}
+    hind = {side: [Vector((s * 0.09, 0.28, 0.22)), Vector((s * 0.095, 0.37, 0.11)),
+                   Vector((s * 0.095, 0.35, 0.05)), Vector((s * 0.095, 0.27, 0.026))] for side, s in sides.items()}
+    tail = [Vector(p) for p in ((0, 0.39, 0.33), (0, 0.5, 0.31), (0, 0.6, 0.29), (0, 0.69, 0.3), (0, 0.75, 0.35))]
+
+    # Skeleton (before any geometry: adding the weight layer invalidates vertices).
+    b.bone("hips", spine[0], spine[1])
+    b.bone("chest", spine[1], spine[2], "hips")
+    b.bone("neck", spine[2], spine[3], "chest")
+    b.bone("head", spine[3], spine[4], "neck")
+    for side, (top, tip) in ears.items():
+        b.bone(f"ear_{side}", top, tip, "head")
+    for side in sides:
+        j = front[side]
+        b.bone(f"leg_f{side}_0", j[0], j[1], "chest")
+        b.bone(f"leg_f{side}_1", j[1], j[2], f"leg_f{side}_0")
+        b.bone(f"paw_f{side}", j[2], j[3], f"leg_f{side}_1")
+        j = hind[side]
+        b.bone(f"leg_b{side}_0", j[0], j[1], "hips")
+        b.bone(f"leg_b{side}_1", j[1], j[2], f"leg_b{side}_0")
+        b.bone(f"paw_b{side}", j[2], j[3], f"leg_b{side}_1")
+    for k in range(len(tail) - 1):
+        b.bone(f"tail_{k}", tail[k], tail[k + 1], "hips" if k == 0 else f"tail_{k - 1}")
+
+    def mark():
+        return len(b.bm.verts)
+
+    def since(m):
+        """The vertices made since mark() returned m."""
+        return [v for v in list(b.bm.verts)[m:] if v.is_valid]
+
+    def skin(m, bone):
+        b.weigh(since(m), {bone: 1.0})
+
+    def skin_chain(m, joints, bones):
+        """Skins to the nearest bone of a chain, blending across each joint."""
+        for v in since(m):
+            best = None
+            for i, (a, c) in enumerate(zip(joints, joints[1:])):
+                d = c - a
+                t = min(max((v.co - a).dot(d) / d.length_squared, 0.0), 1.0)
+                dist = (v.co - (a + d * t)).length
+                if best is None or dist < best[0]:
+                    best = (dist, i, t)
+            _, i, t = best
+            w = {bones[i]: 1.0}
+            if t > 0.85 and i + 1 < len(bones):
+                k = (t - 0.85) / 0.3
+                w = {bones[i]: 1 - k, bones[i + 1]: k}
+            elif t < 0.15 and i > 0:
+                k = (0.15 - t) / 0.3
+                w = {bones[i]: 1 - k, bones[i - 1]: k}
+            b.weigh([v], w)
+
+    def oval_tube(sections, seg=8, color=coat):
+        """Tube through `sections` of (center, half-width, half-height): an oval cross
+        section, widest across X. A half-width of 0 closes it to a point."""
+        rings = b.tube([c for c, _, _ in sections], [1.0 if w > 0 else 0.0 for _, w, _ in sections],
+                       seg=seg, color=color)
+        for ring, (c, w, h) in zip(rings, sections):
+            c = b.P @ Vector(c)
+            for v in ring:
+                d = v.co - c
+                v.co = c + Vector((d.x * w, d.y * w, d.z * h))
+        return rings
+
+    # Body: a long barrel, deep at the chest (its keel low between the front legs), tucked
+    # up under the loins and rounding off over the rump. It follows `hips` behind the
+    # middle of the back and `chest` in front of it, blending between.
+    m = mark()
+    oval_tube([((0, -0.37, 0.31), 0.09, 0.11), ((0, -0.31, 0.27), 0.13, 0.15),
+               ((0, -0.18, 0.25), 0.14, 0.16), ((0, -0.02, 0.27), 0.13, 0.13),
+               ((0, 0.14, 0.29), 0.12, 0.11), ((0, 0.28, 0.3), 0.125, 0.115),
+               ((0, 0.38, 0.3), 0.09, 0.09), ((0, 0.42, 0.3), 0.0, 0.0)], seg=10, color=coat)
+    for v in since(m):
+        w = smoothstep(-0.08, 0.16, v.co.y)
+        b.weigh([v], {"chest": 1 - w, "hips": w})
+
+    # Neck, rising forward out of deep in the chest and on up inside the skull, so it never
+    # parts from either as the head turns. It follows `chest` at its root, bends along
+    # `neck`, and its upper part (where it meets and runs into the skull) follows `head`.
+    m = mark()
+    oval_tube([((0, -0.2, 0.28), 0.09, 0.1), ((0, -0.3, 0.3), 0.1, 0.12), ((0, -0.4, 0.38), 0.088, 0.1),
+               ((0, -0.46, 0.45), 0.075, 0.08), ((0, -0.5, 0.5), 0.06, 0.06)], seg=8, color=coat)
+    root, top = spine[2], spine[3]
+    for v in since(m):
+        t = (v.co - root).dot(top - root) / (top - root).length_squared
+        head = smoothstep(0.55, 0.9, t)
+        chest = smoothstep(0.35, 0.0, t)
+        b.weigh([v], {k: w for k, w in (("chest", chest), ("neck", 1 - head - chest), ("head", head)) if w > 0})
+
+    # Head: a domed skull, then a long tapering muzzle with a stop at the brow, the lower
+    # jaw tucked in under it, and a big black nose at the tip.
+    m = mark()
+    hc = Vector((0, -0.49, 0.5))
+    b.ico(1, 1, loc=hc, scale=(0.085, 0.09, 0.08), color=coat)
+    oval_tube([((0, -0.53, 0.5), 0.055, 0.05), ((0, -0.6, 0.48), 0.042, 0.04),
+               ((0, -0.67, 0.465), 0.032, 0.03), ((0, -0.69, 0.462), 0.0, 0.0)], seg=8, color=coat)
+    oval_tube([((0, -0.52, 0.455), 0.04, 0.025), ((0, -0.6, 0.445), 0.03, 0.02),
+               ((0, -0.655, 0.44), 0.0, 0.0)], seg=6, color=coat)
+    b.ico(0.02, 1, loc=(0, -0.685, 0.468), scale=(1.1, 0.8, 0.8), color="black")
+    b.box((0.05, 0.08, 0.006), (0, -0.62, 0.452), color="dsoil")  # the line of the mouth
+
+    # Eyes: dark and set to the sides of the stop, under a soft brow.
+    for s in (-1, 1):
+        b.ico(0.016, 1, loc=(s * 0.042, -0.545, 0.525), color="black")
+        b.ico(0.004, 0, loc=(s * 0.046, -0.557, 0.533), color="white")
+        b.box((0.03, 0.02, 0.012), (s * 0.04, -0.54, 0.545), rot=(0, s * -15, 0), color=coat)
+    skin(m, "head")
+
+    # Ears: long soft flaps set high at the back of the skull, hanging past the jaw and
+    # turned a little forward. They're hinged at the top, blending into `head` there.
+    for side, s in sides.items():
+        m = mark()
+        flap = [(Vector((s * 0.082, -0.47, 0.54)), 0.03), (Vector((s * 0.096, -0.475, 0.49)), 0.054),
+                (Vector((s * 0.102, -0.485, 0.42)), 0.06), (Vector((s * 0.1, -0.495, 0.37)), 0.045),
+                (Vector((s * 0.098, -0.5, 0.345)), 0.0)]
+        rings = b.tube([p for p, _ in flap], [w for _, w in flap], seg=8, color=coat)
+        for ring, (p, w) in zip(rings, flap):
+            for v in ring:  # pressed flat against the side of the head
+                v.co.x = p.x + (v.co.x - p.x) * 0.016 / max(w, 1e-6)
+        for v in since(m):
+            w = smoothstep(0.47, 0.53, v.co.z) * 0.8
+            b.weigh([v], {f"ear_{side}": 1 - w, "head": w})
+
+    # Legs: short and sturdy. The front ones come out from under the deep chest, bowed in
+    # a little at the wrist, their paws turned slightly out; the back ones from muscular
+    # thighs, angled back to the hock and then straight down.
+    for side, s in sides.items():
+        j = front[side]
+        m = mark()
+        b.tube([j[0], j[1], j[2], (s * 0.095, -0.3, 0.035)], [0.05, 0.04, 0.032, 0.03], seg=6, color=coat)
+        skin_chain(m, [j[0] + Vector((0, 0, 0.1))] + j, ["chest", f"leg_f{side}_0", f"leg_f{side}_1", f"paw_f{side}"])
+        m = mark()
+        b.ico(1, 1, loc=(s * 0.1, -0.31, 0.026), rot=(0, 0, s * -12), scale=(0.042, 0.062, 0.03),
+              color=coat, floor=0.0)
+        for k in (-1, 0, 1):  # claws
+            b.box((0.008, 0.014, 0.009), (s * 0.1 + k * 0.016 - s * k * 0.004, -0.358, 0.01), color="black")
+        skin(m, f"paw_f{side}")
+
+        j = hind[side]
+        m = mark()
+        b.ico(1, 1, loc=(s * 0.085, 0.27, 0.24), scale=(0.06, 0.1, 0.1), color=coat)
+        b.tube([j[0], j[1], j[2], (s * 0.095, 0.335, 0.035)], [0.045, 0.032, 0.03, 0.028], seg=6, color=coat)
+        skin_chain(m, [j[0] + Vector((0, -0.08, 0.12))] + j, ["hips", f"leg_b{side}_0", f"leg_b{side}_1", f"paw_b{side}"])
+        m = mark()
+        b.ico(1, 1, loc=(s * 0.095, 0.32, 0.026), scale=(0.04, 0.058, 0.028), color=coat, floor=0.0)
+        for k in (-1, 0, 1):
+            b.box((0.008, 0.014, 0.009), (s * 0.095 + k * 0.015, 0.272, 0.01), color="black")
+        skin(m, f"paw_b{side}")
+
+    # Tail: thin and tapering, sweeping back and a little down from the rump, then curving
+    # up at the end.
+    m = mark()
+    b.tube(tail, [0.034, 0.027, 0.02, 0.013, 0.0], seg=6, color=coat)
+    skin_chain(m, [spine[0] + Vector((0, -0.06, 0))] + tail, ["hips"] + [f"tail_{k}" for k in range(len(tail) - 1)])
+
+
 # ---------------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------------

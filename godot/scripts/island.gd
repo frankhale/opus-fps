@@ -14,8 +14,8 @@ extends Node3D
 ## at height 0 that reaches the fog on every side, with surf rolling in to shore.
 ## You can wade out until the water is about 1 m deep, where invisible walls follow the
 ## coast round. Rocks sit along the shore (the surf foams round them), with a few trees
-## and bushes on the grass. The shadow cat roams the island, the lynx ranger potters
-## about on it, and the arcane eye and a jellyfish float over it. Everything is built
+## and bushes on the grass. The shadow cat roams the island, the lynx ranger and a
+## dachshund potter about on it, and the arcane eye and a jellyfish float over it. Everything is built
 ## when the node enters the tree (also in the editor, apart from the creatures), so the
 ## scene file stays tiny. The player starts on the south beach, looking out to sea.
 
@@ -91,6 +91,11 @@ const LYNX_SHORE := 4.0
 const JELLY_ANGLE := -0.7
 const JELLY_INLAND := 6.0
 const JELLY_OFFSHORE := 6.0
+## The dachshund starts this far round the coast from the player's start (radians) and
+## this far inland, and keeps at least DOG_SHORE meters from the water.
+const DOG_ANGLE := -0.25
+const DOG_INLAND := 9.0
+const DOG_SHORE := 3.0
 
 var _coast := []  # [harmonic, amplitude, phase] for the coastline's wander
 var _noise: FastNoiseLite
@@ -113,6 +118,7 @@ func build() -> void:
 	_scatter_props()
 	_place_cat()
 	_place_lynx()
+	_place_dog()
 	_place_eye()
 	_place_jellyfish()
 	if not Engine.is_editor_hint() and ResourceLoader.exists(SURF_SOUND):
@@ -347,6 +353,22 @@ func _place_lynx() -> void:
 	lynx.wander_radius = COAST_RADIUS
 	lynx.can_stand = func(p: Vector3) -> bool: return inland(p.x, p.z) > LYNX_SHORE
 	add_child(lynx)
+
+
+## The dachshund (scripts/enemies/dachshund.gd), trotting about on dry land.
+func _place_dog() -> void:
+	if Engine.is_editor_hint():
+		return  # it only runs in the game
+	var angle := PI * 0.5 + DOG_ANGLE
+	var r := coast_radius(angle) - DOG_INLAND
+	var x := cos(angle) * r
+	var z := sin(angle) * r
+	var dog := Dachshund.new()
+	dog.name = "Dachshund"
+	dog.position = Vector3(x, height(x, z) + 0.05, z)
+	dog.wander_radius = COAST_RADIUS
+	dog.can_stand = func(p: Vector3) -> bool: return inland(p.x, p.z) > DOG_SHORE
+	add_child(dog)
 
 
 ## The arcane eye (scripts/enemies/arcane_eye.gd), floating about over the island.
