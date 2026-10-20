@@ -23,6 +23,8 @@ the world, written straight into the Godot project at godot/assets/sfx/.
   spider_alert/charge/spit/hurt/die/step.wav   the spider: chittering, hissing and its toxin spray
   cat_alert/charge/swing/hit/hurt/die.wav   the shadow cat: a yowl, its tail spikes
                      snapping out, the swing of its tail, the spiked hit, and its cries
+  treant_alert/charge/swipe/hit/slam/roots/hurt/die/step.wav   the treant: a creaking
+                     wooden groan, its claws, the ground slam and roots, splintering wood
 
 Loop files get a .import that tells Godot to loop them. Run from the repo root:
   python3 tools/generate_sfx.py
@@ -511,6 +513,103 @@ def cat_sounds(rng):
     write("cat_die.wav", mix([v * f * 0.8 for v, f in zip(voice, fade)], sigh), 0.8)
 
 
+def treant_sounds(rng):
+    """The treant: creaking, groaning wood, the whoosh of its claws, its heavy tread,
+    the ground slam and the roots it sends up, and splintering when it's hurt or dies."""
+    def creak(n, rate, res, gain=1.0):
+        """Wood under strain: stick-slip clicks at rate(t) per second (t from 0 to 1),
+        each ringing briefly at res(t) Hz, like a bending branch or a door hinge."""
+        x, next_at, i = [0.0] * n, 0.0, 0
+        k = int(0.02 * RATE)
+        while i < n:
+            t = i / n
+            f = res(t)
+            amp = gain * rng.uniform(0.6, 1.0)
+            for j in range(k):
+                if i + j < n:
+                    x[i + j] += amp * math.sin(2 * math.pi * f * j / RATE) * math.exp(-j / (0.004 * RATE))
+            next_at += RATE / max(rate(t), 1.0) * rng.uniform(0.8, 1.2)
+            i = int(next_at)
+        return x
+
+    def groan(n, pitch, harm=(1.0, 0.8, 0.6, 0.45, 0.3, 0.2, 0.12)):
+        """A deep, hollow voice following pitch(t), dark like air through a hollow trunk."""
+        out, ph = [], 0.0
+        for i in range(n):
+            t = i / n
+            ph += 2 * math.pi * pitch(t) * (1 + 0.02 * math.sin(2 * math.pi * 4.5 * i / RATE)) / RATE
+            out.append(sum(a * math.sin(ph * (k + 1)) for k, a in enumerate(harm)))
+        return lowpass(out, 0.12)
+
+    def snap(n, delay, gain, bright=0.3):
+        """A twig or splinter cracking: a sharp bright click with a short woody knock."""
+        d = int(delay * RATE)
+        k = int(0.06 * RATE)
+        crack = [s * e for s, e in zip(highpass(noise(k, rng), bright), env(k, 0.0003, 0.006))]
+        knock = tone(k, rng.uniform(380, 650), 0.012, 0.0005, (1.0, 0.0, 0.3))
+        body = [(c + q * 0.6) * gain for c, q in zip(crack, knock)]
+        return ([0.0] * d + body + [0.0] * n)[:n]
+
+    def rumble(n, darkness, attack, decay):
+        return [s * e for s, e in zip(lowpass(lowpass(noise(n, rng), darkness), darkness), env(n, attack, decay))]
+
+    # Alert: a long creak as it wakes, a deep groan swelling under it and a crack or two.
+    n = int(1.3 * RATE)
+    voice = [v * e * 0.7 for v, e in zip(groan(n, lambda t: 58 + 26 * math.sin(math.pi * min(t * 1.4, 1.0))), env(n, 0.25, 0.5))]
+    write("treant_alert.wav", mix(voice, creak(n, lambda t: 25 + 50 * t, lambda t: 420 - 120 * t, 0.5),
+                                  snap(n, 0.1, 0.8), snap(n, 0.55, 0.6)), 0.8)
+
+    # Charge: the arms drawn back, a creak tightening and rising.
+    n = int(0.6 * RATE)
+    build = [min(i / n * 1.3, 1.0) for i in range(n)]
+    write("treant_charge.wav", [c * b for c, b in zip(creak(n, lambda t: 30 + 90 * t, lambda t: 300 + 260 * t), build)], 0.6)
+
+    # Swipe: a heavy whoosh of claws through the air.
+    n = int(0.42 * RATE)
+    air = noise(n, rng)
+    whoosh, y = [], 0.0
+    for i, a in enumerate(air):
+        t = i / n
+        y += (0.03 + 0.3 * math.sin(math.pi * t) ** 2) * (a - y)
+        whoosh.append(y * math.sin(math.pi * t) ** 1.5)
+    write("treant_swipe.wav", highpass(whoosh, 0.02), 0.65)
+
+    # Hit: claws raking home, a thump and a scrape.
+    n = int(0.35 * RATE)
+    scrape = [s * e * 0.6 for s, e in zip(highpass(noise(n, rng), 0.3), env(n, 0.004, 0.07))]
+    write("treant_hit.wav", mix([s * 0.9 for s in sweep_thump(n, 130, 55, 0.03, 0.08)], scrape, snap(n, 0.0, 0.5)), 0.85)
+
+    # Slam: claws driven into the earth, a deep thud and scattered dirt.
+    n = int(0.8 * RATE)
+    write("treant_slam.wav", mix([s * 1.0 for s in sweep_thump(n, 95, 38, 0.05, 0.2)], rumble(n, 0.06, 0.004, 0.25),
+                                 [s * 0.4 for s in rustle(n, rng, 0.3, 250)]), 0.9)
+
+    # Roots: the ground rumbling and then bursting open, cracking wood all round.
+    n = int(1.1 * RATE)
+    swell = [min(i / (0.55 * RATE), 1.0) ** 2 * math.exp(-max(i - 0.6 * RATE, 0) / (0.2 * RATE)) for i in range(n)]
+    burst = mix(*[snap(n, rng.uniform(0.55, 0.75), rng.uniform(0.5, 1.0), 0.25) for _ in range(9)])
+    write("treant_roots.wav", mix([r * s for r, s in zip(rumble(n, 0.05, 0.01, 1.0), swell)], burst,
+                                  [0.0] * int(0.55 * RATE) + sweep_thump(n, 120, 50, 0.03, 0.12)), 0.85)
+
+    # Hurt: a knock on hollow wood and a crack.
+    n = int(0.3 * RATE)
+    knock = [s * e for s, e in zip(tone(n, 210, 0.05, 0.0005, (1.0, 0.5, 0.25)), env(n, 0.0005, 0.05))]
+    write("treant_hurt.wav", mix(knock, snap(n, 0.01, 0.8), creak(n, lambda t: 50, lambda t: 380, 0.3)), 0.7)
+
+    # Death: a groan sinking away as the trunk splinters and the pieces fall.
+    n = int(1.8 * RATE)
+    voice = [v * e * 0.6 for v, e in zip(groan(n, lambda t: 80 - 45 * t), env(n, 0.05, 0.6))]
+    splinter = mix(*[snap(n, rng.uniform(0.0, 0.4) ** 1.5, rng.uniform(0.4, 1.0)) for _ in range(12)])
+    falls = mix(*[snap(n, rng.uniform(0.4, 1.4), rng.uniform(0.2, 0.5), 0.5) for _ in range(10)])
+    write("treant_die.wav", mix(voice, splinter, falls, rumble(n, 0.06, 0.01, 0.5),
+                                [s * 0.7 for s in sweep_thump(n, 110, 45, 0.05, 0.2)]), 0.85)
+
+    # Step: a heavy wooden foot on the ground.
+    n = int(0.25 * RATE)
+    write("treant_step.wav", mix(scuff(n, rng, 0.0, 0.005, 0.05, 0.12, 1.0), [s * 0.6 for s in thud(n, 70, 0.005, 0.05)],
+                                 [s * 0.2 for s in rustle(n, rng, 0.1, 120)]), 0.55)
+
+
 def generate():
     os.makedirs(OUT, exist_ok=True)
     for i in range(5):
@@ -579,6 +678,7 @@ def generate():
     shield_sounds(random.Random(23))
     spider_sounds(random.Random(29))
     cat_sounds(random.Random(37))
+    treant_sounds(random.Random(41))
 
     for name in ("slide_loop.wav", "wind_loop.wav", "surf_loop.wav", "portal_hum.wav", "golem_hum.wav", "shield_hum.wav"):
         path = os.path.join(OUT, name + ".import")

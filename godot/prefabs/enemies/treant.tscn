@@ -1,0 +1,13 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/enemies/treant.gd" id="1_trnt0"]
+[ext_resource type="Script" path="res://scripts/editor_preview.gd" id="2_trnt1"]
+[ext_resource type="PackedScene" path="res://assets/enemies/enemy_treant.glb" id="3_trnt2"]
+
+[node name="treant" type="CharacterBody3D" unique_id=1460185321]
+script = ExtResource("1_trnt0")
+
+[node name="EditorPreview" type="Node3D" parent="." unique_id=907316654]
+transform = Transform3D(-1.15, 0, -1.00536197e-07, 0, 1.15, 0, 1.00536197e-07, 0, -1.15, 0, 0, 0)
+script = ExtResource("2_trnt1")
+model = ExtResource("3_trnt2")

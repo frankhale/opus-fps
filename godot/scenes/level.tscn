@@ -75,6 +75,7 @@
 [ext_resource type="PackedScene" path="res://prefabs/enemies/floating_eye.tscn" id="69_plen7"]
 [ext_resource type="PackedScene" path="res://prefabs/enemies/golem.tscn" id="71_epb10"]
 [ext_resource type="PackedScene" path="res://prefabs/enemies/spider.tscn" id="73_5ikxq"]
+[ext_resource type="PackedScene" path="res://prefabs/enemies/treant.tscn" id="74_trent"]
 [ext_resource type="PackedScene" path="res://prefabs/scenery/portal.tscn" id="75_sr7al"]
 
 [node name="Level" type="Node3D" unique_id=529389825]
@@ -6001,6 +6002,13 @@ script = ExtResource("61_spidr")
 max_health = 70.0
 model_scale = 1.25
 knockback = 0.12
+
+[node name="Treant" type="CharacterBody3D" parent="Enemies" unique_id=1374460912 instance=ExtResource("74_trent")]
+transform = Transform3D(0.70710677, 0, 0.70710677, 0, 1, 0, -0.70710677, 0, 0.70710677, -44.5, 5.2, -75)
+
+[node name="Treant2" type="CharacterBody3D" parent="Enemies" unique_id=651983027 instance=ExtResource("74_trent")]
+transform = Transform3D(-0.8660254, 0, 0.5, 0, 1, 0, -0.5, 0, -0.8660254, 75, 2.7, 75)
+wander_radius = 9.0
 
 [node name="Portals" type="Node3D" parent="." unique_id=2038222910]
 

@@ -3403,6 +3403,343 @@ def enemy_lovebird(b):
             b.weigh([v], {k: x for k, x in (("body", 1 - w), (f"leg_{side}", w)) if x > 0})
 
 
+
+@asset("enemies")
+def enemy_treant(b):
+    """A little treant, faces -Y, about 1.75 m tall to the tips of its sprouts: a hollow
+    stump of a body that is all head, its front a mask of pale cracked planks with big
+    glowing orange eyes under scowling brows and a wide glowing grin of jagged plank
+    teeth. The planks rise above its brow into a broken crown, the hollow is full of moss
+    with three leafy sprouts and a little white flower growing out of it, and a vine
+    trails down one cheek. Behind, it's rough dark bark with moss hanging over the top of
+    its back in thick fingers and mossy ribs down its round belly. Long knotty arms hang
+    from its sides to big hands with four hooked pale claws each, mossy cuffs round the
+    wrists and vines wound up the forearms; it squats on short bowed legs with mossy
+    ankles and spiked toes.
+
+    Rigged for animation (rest pose as modeled, arms hanging). Sides are its own: l is +X.
+      body (root, up through the stump) > sprout_<k> (k = 0 centre, 1 at -X, 2 at +X)
+      body > arm_<side>_0 (shoulder to elbow) > arm_<side>_1 (to the wrist) > hand_<side>
+           > claw_<side>_<k> (k = 0 to 2 from the outside in, 3 the thumb)
+      body > leg_<side>_0 (hip to knee) > leg_<side>_1 (to the ankle) > foot_<side>
+    The stump, its face, crown and moss follow `body`; each sprout and its leaves follow
+    their bone, blending into `body` at the root. Limbs blend across their joints."""
+    bark = {"wood": 3, "dbark": 2}
+    face = {"lwood": 5, "sand": 1}
+    moss = {"olive": 3, "grass": 2, "lgrass": 1}
+    leafc = {"toxic": 3, "lgrass": 1}
+    claw = {"lwood": 3, "sand": 1}
+    sides = {"l": 1, "r": -1}
+
+    # The stump: an oval lathe, narrow at the chin and widening to the crown.
+    DY = 0.82  # depth over width
+    prof = [(0.0, 0.37), (0.17, 0.375), (0.27, 0.42), (0.33, 0.52), (0.355, 0.68), (0.37, 0.86),
+            (0.385, 1.05), (0.4, 1.22), (0.41, 1.36), (0.36, 1.37), (0.0, 1.3)]
+
+    def R(z):
+        for (r0, z0), (r1, z1) in zip(prof[1:], prof[2:9]):
+            if z <= z1:
+                return r0 + (r1 - r0) * max(z - z0, 0) / (z1 - z0)
+        return prof[8][0]
+
+    def surf(a, z, off=0.0):
+        """The point on the stump at angle a (degrees from -Y toward +X), height z,
+        `off` out from its surface."""
+        r, s, c = R(z), math.sin(math.radians(a)), math.cos(math.radians(a))
+        return Vector((r * s, -r * DY * c, z)) + normal(a) * off
+
+    def normal(a):
+        s, c = math.sin(math.radians(a)), math.cos(math.radians(a))
+        return Vector((s, -c / DY, 0)).normalized()
+
+    # Layout shared by the skeleton and the mesh.
+    arm = {side: [Vector((s * 0.33, 0.02, 1.0)), Vector((s * 0.62, 0.06, 0.82)),
+                  Vector((s * 0.7, -0.1, 0.52)), Vector((s * 0.72, -0.16, 0.42))] for side, s in sides.items()}
+    leg = {side: [Vector((s * 0.17, 0.03, 0.46)), Vector((s * 0.27, -0.04, 0.26)),
+                  Vector((s * 0.29, 0.0, 0.11)), Vector((s * 0.3, -0.12, 0.05))] for side, s in sides.items()}
+    sprouts = [[Vector(p) for p in ((0.0, 0.02, 1.3), (0.02, 0.0, 1.5), (0.06, 0.04, 1.75))],
+               [Vector(p) for p in ((-0.3, 0.0, 1.32), (-0.42, -0.02, 1.42), (-0.6, -0.02, 1.5))],
+               [Vector(p) for p in ((0.3, 0.04, 1.32), (0.4, 0.04, 1.5), (0.58, 0.06, 1.62))]]
+
+    def claw_path(side, k):
+        s, h = sides[side], arm[side][3]
+        if k == 3:  # the thumb, on the inside, hooking forward and in
+            p = h + Vector((-s * 0.07, -0.06, -0.02))
+            return [p, p + Vector((-s * 0.06, -0.08, -0.06)), p + Vector((-s * 0.08, -0.15, -0.16)),
+                    p + Vector((-s * 0.06, -0.15, -0.26))]
+        o = 1 - k  # 1 outside, 0 middle, -1 inside
+        p = h + Vector((s * 0.06 * o, -0.05, -0.06))
+        dx, fl = s * 0.07 * o, s * 0.05  # fanned out, and all flaring outward
+        return [p, p + Vector((dx * 0.7 + fl * 0.4, -0.09, -0.07)), p + Vector((dx * 1.4 + fl, -0.14, -0.21)),
+                p + Vector((dx * 1.8 + fl * 1.4, -0.1, -0.36)), p + Vector((dx * 1.7 + fl, 0.0, -0.47 + 0.04 * abs(o)))]
+
+    # Skeleton (before any geometry: adding the weight layer invalidates vertices).
+    b.bone("body", (0, 0, 0.42), (0, 0, 1.25))
+    for k, sp in enumerate(sprouts):
+        b.bone(f"sprout_{k}", sp[0], sp[-1], "body")
+    for side in sides:
+        j = arm[side]
+        b.bone(f"arm_{side}_0", j[0], j[1], "body")
+        b.bone(f"arm_{side}_1", j[1], j[2], f"arm_{side}_0")
+        b.bone(f"hand_{side}", j[2], j[3], f"arm_{side}_1")
+        for k in range(4):
+            c = claw_path(side, k)
+            b.bone(f"claw_{side}_{k}", c[0], c[-1], f"hand_{side}")
+        j = leg[side]
+        b.bone(f"leg_{side}_0", j[0], j[1], "body")
+        b.bone(f"leg_{side}_1", j[1], j[2], f"leg_{side}_0")
+        b.bone(f"foot_{side}", j[2], j[3], f"leg_{side}_1")
+
+    def mark():
+        return len(b.bm.verts)
+
+    def since(m):
+        """The vertices made since mark() returned m."""
+        return [v for v in list(b.bm.verts)[m:] if v.is_valid]
+
+    def skin(m, bone):
+        b.weigh(since(m), {bone: 1.0})
+
+    def skin_chain(m, joints, bones):
+        """Skins to the nearest bone of a chain, blending across each joint."""
+        for v in since(m):
+            best = None
+            for i, (a, c) in enumerate(zip(joints, joints[1:])):
+                d = c - a
+                t = min(max((v.co - a).dot(d) / d.length_squared, 0.0), 1.0)
+                dist = (v.co - (a + d * t)).length
+                if best is None or dist < best[0]:
+                    best = (dist, i, t)
+            _, i, t = best
+            w = {bones[i]: 1.0}
+            if t > 0.85 and i + 1 < len(bones):
+                k = (t - 0.85) / 0.3
+                w = {bones[i]: 1 - k, bones[i + 1]: k}
+            elif t < 0.15 and i > 0:
+                k = (0.15 - t) / 0.3
+                w = {bones[i]: 1 - k, bones[i - 1]: k}
+            b.weigh([v], w)
+
+    def plank(p, up, out, w, th, cut_top=0.0, cut_bot=0.0, color=face, glow=False):
+        """A board from p along `up` (its length), `w` wide across and `th` thick toward
+        `out`, sunk a little into what it lies on. cut_top / cut_bot drop one corner of its
+        top / raise one of its bottom, by their size, on the side their sign picks, so the
+        ends look snapped off."""
+        length = up.length
+        u = up.normalized()
+        n = (out - u * out.dot(u)).normalized()
+        t = u.cross(n)
+        coords = []
+        for z, cut in ((0.0, cut_bot), (length, -cut_top)):
+            for s, d in ((-1, -0.3), (1, -0.3), (1, 1), (-1, 1)):
+                dz = cut if (s > 0) == (cut > 0) else 0.0
+                coords.append(p + t * s * w / 2 + n * d * th + u * (z + dz))
+        return b.poly(coords, [(0, 1, 2, 3), (7, 6, 5, 4), (0, 4, 5, 1), (1, 5, 6, 2), (2, 6, 7, 3),
+                               (3, 7, 4, 0)], color=color, glow=glow)
+
+    def leaf(p, d, length, width, color=leafc):
+        """A leaf from p pointing along d, folded a little along its midrib."""
+        d = Vector(d).normalized()
+        side = d.cross(Vector((0, 0, 1)))
+        side = side.normalized() if side.length > 1e-3 else Vector((1, 0, 0))
+        n = side.cross(d)
+        if n.z < 0:
+            n = -n
+        p = Vector(p)
+        outline = [(0, 0, 0), (0.35, 0.5, -0.15), (0.75, 0.38, -0.1), (1, 0, 0), (0.75, -0.38, -0.1),
+                   (0.35, -0.5, -0.15)]
+        pts = [p + d * (a * length) + side * (c * width) + n * (e * width) for a, c, e in outline]
+        coords = pts + [q - n * 0.006 for q in pts]
+        faces = [(0, 1, 2, 3), (0, 3, 4, 5), (9, 8, 7, 6), (11, 10, 9, 6)]
+        faces += [(i, i + 6, (i + 1) % 6 + 6, (i + 1) % 6) for i in range(6)]
+        return b.poly(coords, faces, color=color)
+
+    def sprig(p, d, n, length, rng_spread=40):
+        """A short stem from p along d with n leaves fanned at its end."""
+        p, d = Vector(p), Vector(d).normalized()
+        tip = p + d * length
+        b.limb(p, tip, 0.012, 0.007, 4, "grass")
+        for k in range(n):
+            a = math.radians((k - (n - 1) / 2) * rng_spread)
+            side = d.cross(Vector((0, 0, 1)))
+            side = side.normalized() if side.length > 1e-3 else Vector((1, 0, 0))
+            ld = (d * math.cos(a) + side * math.sin(a) + Vector((0, 0, 0.3))).normalized()
+            leaf(tip, ld, 0.12 * b.rng.uniform(0.85, 1.15), 0.075)
+
+    # ---- The stump, with everything on it following `body` ----
+    m = mark()
+    b.lathe(prof, seg=16, scale=(1, DY, 1), color=lambda f: (moss if f.normal.z > 0.5 else bark), jit=0.008)
+
+    # Bark ribs round the back, mossy over the round belly.
+    for a in range(108, 253, 12):
+        a += b.rng.uniform(-3, 3)
+        z0, z1 = 0.44 + b.rng.uniform(0, 0.06), 1.1 + b.rng.uniform(0, 0.12)
+        pts = [surf(a, z0 + (z1 - z0) * t, 0.005) for t in (0, 0.25, 0.5, 0.75, 1)]
+        b.tube(pts, [0.012, 0.026, 0.03, 0.026, 0.012], seg=4,
+               color=moss if abs(a - 180) < 50 else {"dbark": 1, "olive": 1})
+
+    # Moss hanging over the top of the back in thick fingers.
+    b.ico(1, 1, loc=surf(180, 1.3, -0.04), scale=(0.3, 0.12, 0.1), color=moss, jit=0.01)
+    for a in (138, 153, 167, 181, 195, 209, 223):
+        z1 = b.rng.uniform(0.88, 1.06)
+        pts = [surf(a, 1.36 + 0.02, -0.02)] + [surf(a + b.rng.uniform(-3, 3), 1.36 - (1.36 - z1) * t, 0.03)
+                                             for t in (0.3, 0.65, 1.0)] + [surf(a, z1 - 0.04, 0.01)]
+        b.tube(pts, [0.055, 0.06, 0.055, 0.045, 0.0], seg=6, color=moss)
+
+    # A broken crown of bark shards round the back and sides of the rim.
+    for a in range(96, 265, 13):
+        a += b.rng.uniform(-3, 3)
+        z0 = 1.12 + b.rng.uniform(0, 0.06)
+        top = 1.42 + b.rng.uniform(0.0, 0.16)
+        p0 = surf(a, z0)
+        lean = normal(a) * 0.05
+        plank(p0, Vector((0, 0, top - z0)) + lean, normal(a), 0.13, 0.045,
+              cut_top=b.rng.choice((-1, 1)) * b.rng.uniform(0.04, 0.12), color={"wood": 2, "dbark": 1, "lwood": 1})
+
+    # The face: columns of pale planks, broken across by the grin and by cracks, rising
+    # above the brow into jagged points. The grin glows in the gaps between its teeth.
+    mouth_half = 46
+    for a in (-82, -64, -45, -27, -9, 9, 27, 45, 64, 82):
+        a += b.rng.uniform(-1.5, 1.5)
+        w = R(0.9) * math.radians(18) * 1.06
+        out = normal(a)
+        chin = 0.42 if abs(a) < 50 else 0.5 + (abs(a) - 50) * 0.004
+        top = 1.36 + b.rng.uniform(0.04, 0.22) + (0.06 if abs(abs(a) - 27) < 5 else 0)
+        crack = b.rng.uniform(0.98, 1.12)
+
+        def run(z0, z1, ct=0.0, cb=0.0, a=a, w=w, out=out):
+            p0, p1 = surf(a, z0), surf(a, min(z1, 1.36))
+            up = p1 - p0
+            if z1 > 1.36:
+                up += Vector((0, 0, z1 - 1.36)) + out * 0.04
+            plank(p0, up, out, w, 0.04, ct, cb)
+
+        if abs(a) <= mouth_half:
+            lo = 0.6 + 0.000022 * a * a  # the grin curls up at its corners
+            hi = lo + 0.085 - 0.00001 * a * a
+            run(chin, lo, ct=b.rng.choice((-1, 1)) * b.rng.uniform(0.01, 0.035))
+            run(hi, crack, cb=b.rng.choice((-1, 1)) * b.rng.uniform(0.01, 0.03))
+            p0 = surf(a, lo - 0.02, 0.012)
+            plank(p0, surf(a, hi + 0.02, 0.012) - p0, out, w * 1.08, 0.012, color="orange", glow=True)
+            # A jagged tooth down from above and another up from below, off to either side.
+            for da, z0, z1 in ((-4, hi + 0.01, hi - 0.045), (5, lo - 0.01, lo + 0.04)):
+                p0, p1 = surf(a + da, z0, 0.03), surf(a + da + b.rng.uniform(-2, 2), z1, 0.03)
+                b.limb(p0, p1, 0.024, 0.0, 4, face)
+        else:
+            run(chin, crack)
+        run(crack + 0.012, top, ct=b.rng.choice((-1, 1)) * b.rng.uniform(0.04, 0.12))
+
+    # Eyes: deep dark sockets, each with a big glowing orb and a hot yellow core, under a
+    # heavy brow plank slanting down toward the middle in a scowl.
+    for s in (-1, 1):
+        a, z = s * 23, 0.88
+        n = normal(a)
+        b.ico(1, 1, loc=surf(a, z, 0.03), rot=(0, 0, a), scale=(0.105, 0.045, 0.095), color="dsoil")
+        b.ico(0.074, 1, loc=surf(a, z, 0.045), color="orange", glow=True)
+        b.ico(0.036, 1, loc=surf(a, z, 0.1) + Vector((0, 0, 0.005)), color="yellow", glow=True)
+        p0 = surf(s * 44, z + 0.15, 0.045)
+        p1 = surf(s * 6, z + 0.06, 0.055)
+        b.beam(p0, p1, 0.06, color=face)
+        p0 = surf(s * 42, z - 0.1, 0.04)
+        p1 = surf(s * 7, z - 0.09, 0.045)
+        b.beam(p0, p1, 0.04, color=face)
+
+    # Moss on the cheeks and round the rim, a vine trailing down its left cheek, and the
+    # mossy hollow at the top.
+    for a, z, sc in ((-58, 1.22, 0.08), (55, 1.0, 0.07), (70, 0.78, 0.06), (-66, 0.66, 0.05), (34, 1.32, 0.06)):
+        b.ico(1, 1, loc=surf(a, z, 0.03), rot=(0, 0, a), scale=(sc, sc * 0.4, sc * 0.8), color=moss, jit=0.01)
+    vine = [surf(a, z, 0.05) for a, z in ((58, 1.38), (66, 1.2), (74, 1.02), (70, 0.84), (60, 0.66), (64, 0.5))]
+    b.tube(vine, [0.022] * 5 + [0.0], seg=5, color="grass")
+    sprig(surf(66, 1.2, 0.06), normal(66) + Vector((0, 0, 0.6)), 2, 0.06)
+    sprig(surf(-96, 1.25, 0.04), normal(-96) + Vector((0, 0, 0.8)), 2, 0.06)
+    b.ico(1, 1, loc=(0, 0, 1.33), scale=(0.34, 0.27, 0.09), color=moss, jit=0.012)
+
+    # A little white flower on the moss.
+    fc = Vector((-0.06, -0.2, 1.38))
+    for k in range(5):
+        a = 2 * math.pi * k / 5
+        b.ico(1, 0, loc=fc + Vector((math.cos(a), math.sin(a), 0)) * 0.025, scale=(0.022, 0.022, 0.008),
+              color="white")
+    b.ico(0.012, 0, loc=fc + Vector((0, 0, 0.008)), color="yellow")
+    skin(m, "body")
+
+    # ---- Sprouts: leafy stems out of the hollow, bending from their roots ----
+    for k, sp in enumerate(sprouts):
+        m = mark()
+        b.tube(sp, [0.018, 0.014, 0.006], seg=5, color="grass")
+        tip = sp[-1]
+        n_leaves = 6 if k == 0 else 4
+        for i in range(n_leaves):
+            t = 0.35 + 0.65 * i / (n_leaves - 1)
+            seg = min(int(t * 2), 1)
+            p = sp[seg].lerp(sp[seg + 1], t * 2 - seg)
+            d = (sp[-1] - sp[0]).normalized()
+            ang = math.radians(i * 137.5)
+            out = Vector((math.cos(ang), math.sin(ang), 0))
+            out = (out - d * out.dot(d)).normalized()
+            ld = (out + d * 0.55).normalized()
+            size = 1.25 if k == 0 else 1.0
+            b.limb(p, p + ld * 0.04, 0.006, 0.004, 3, "grass")
+            leaf(p + ld * 0.04, ld, 0.17 * size * b.rng.uniform(0.85, 1.1), 0.11 * size)
+        leaf(tip, (tip - sp[1]).normalized() + Vector((0, -0.2, 0)), 0.18, 0.11)
+        root = sp[0]
+        for v in since(m):
+            w = smoothstep(0.02, 0.12, (v.co - root).length)
+            b.weigh([v], {k2: x for k2, x in (("body", 1 - w), (f"sprout_{k}", w)) if x > 0})
+
+    # ---- Arms: long and knotty, from the sides of the stump ----
+    for side, s in sides.items():
+        j = arm[side]
+        m = mark()
+        b.ico(1, 1, loc=j[0] + Vector((s * 0.04, 0, 0.01)), scale=(0.1, 0.1, 0.11), color=bark, jit=0.01)
+        b.tube([j[0], j[0].lerp(j[1], 0.5) + Vector((0, 0, 0.02)), j[1]], [0.09, 0.085, 0.07], seg=7, color=bark)
+        b.ico(1, 1, loc=j[1], scale=(0.085, 0.08, 0.08), color=bark, jit=0.012)  # knobbly elbow
+        b.tube([j[1], j[1].lerp(j[2], 0.5), j[2], j[3]], [0.07, 0.065, 0.075, 0.07], seg=7, color=bark)
+        # A mossy cuff at the wrist and another at the shoulder, with a few leaves.
+        d = (j[2] - j[1]).normalized()
+        b.limb(j[2] - d * 0.07, j[2] + d * 0.02, 0.095, 0.1, 8, moss)
+        b.limb(j[0] + (j[1] - j[0]) * 0.32, j[0] + (j[1] - j[0]) * 0.45, 0.1, 0.09, 8, moss)
+        sprig(j[2] - d * 0.03 + Vector((s * 0.08, 0, 0.02)), Vector((s * 1, -0.3, 0.9)), 2, 0.05)
+        # A vine wound up the forearm.
+        pts = []
+        for i in range(9):
+            t = i / 8
+            c = j[1].lerp(j[2], t)
+            side_v = d.cross(Vector((0, 1, 0))).normalized()
+            up_v = d.cross(side_v)
+            a = t * 2.4 * math.pi
+            pts.append(c + (side_v * math.cos(a) + up_v * math.sin(a)) * 0.072)
+        b.tube(pts, [0.016] * 8 + [0.0], seg=4, color="grass")
+        # The hand: a gnarled knot the claws grow out of.
+        b.ico(1, 1, loc=j[3] + Vector((0, -0.01, -0.02)), scale=(0.12, 0.12, 0.1), color=bark, jit=0.012)
+        skin_chain(m, [j[0] - Vector((s * 0.15, 0, 0))] + j, ["body", f"arm_{side}_0", f"arm_{side}_1", f"hand_{side}"])
+        # Claws: long pale hooks, knobbled at the knuckle.
+        for k in range(4):
+            c = claw_path(side, k)
+            m = mark()
+            b.ico(0.055 if k < 3 else 0.045, 1, loc=c[0], color=bark)
+            radii = ([0.05, 0.045, 0.036, 0.02, 0.0] if k < 3 else [0.04, 0.034, 0.022, 0.0])
+            b.tube(c, radii, seg=6, color=claw)
+            skin(m, f"claw_{side}_{k}")
+
+    # ---- Legs: short and bowed, with mossy ankles and spiked toes ----
+    for side, s in sides.items():
+        j = leg[side]
+        m = mark()
+        b.tube([j[0] + Vector((0, 0, 0.06)), j[0], j[1]], [0.09, 0.095, 0.075], seg=7, color=bark)
+        b.ico(1, 1, loc=j[1], scale=(0.08, 0.08, 0.075), color=bark, jit=0.01)  # knee
+        b.tube([j[1], j[2], j[2] - Vector((0, 0, 0.04))], [0.072, 0.075, 0.08], seg=7, color=bark)
+        b.limb(j[2] - Vector((0, 0, 0.02)), j[2] + Vector((0, 0, 0.07)), 0.1, 0.09, 8, moss)
+        skin_chain(m, [j[0] + Vector((-s * 0.1, 0, 0.2))] + j[:3], ["body", f"leg_{side}_0", f"leg_{side}_1"])
+        m = mark()
+        b.ico(1, 1, loc=(s * 0.29, -0.04, 0.05), scale=(0.11, 0.14, 0.07), color=bark, floor=0.0, jit=0.008)
+        for dx in (-0.055, 0.0, 0.055):  # spiked toes, and a spur at the heel
+            p = Vector((s * 0.29 + dx * 1.1, -0.15, 0.035))
+            b.limb(p, p + Vector((dx * 0.5, -0.07, -0.025)), 0.032, 0.0, 5, claw)
+        p = Vector((s * 0.29, 0.07, 0.04))
+        b.limb(p, p + Vector((0, 0.07, -0.03)), 0.028, 0.0, 5, claw)
+        skin(m, f"foot_{side}")
+
 # ---------------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------------
