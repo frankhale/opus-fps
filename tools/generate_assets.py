@@ -4132,6 +4132,45 @@ def enemy_pumpkin_crab(b):
                        ["body", f"leg_{side}_{k}_0", f"leg_{side}_{k}_1"])
 
 
+@asset("scenery")
+def grass_patch(b):
+    """A clump of meadow grass to carpet grassy ground: about 0.9 m across and 0.2-0.45 m
+    tall, thick in the middle and thinning out at the edge so neighbouring clumps blend
+    into one another. Each blade is a thin, tapering strip bent over partway up in a
+    random direction, darker green at its base and lighter toward the tip, with a few
+    olive and dry ones among them. Blades are two-sided (a front and a back face) so they
+    show from every side without a double-sided material, at 6 triangles each (336 in
+    all), so thousands can fill a meadow."""
+    base = {"grass": 3, "dgrass": 2, "olive": 1}
+    tip = {"lgrass": 4, "grass": 2, "olive": 1}
+    dry = {"olive": 2, "sand": 1}
+    bm = b.bm
+    for i in range(56):
+        # Denser toward the middle; shorter toward the edge.
+        r = 0.45 * math.sqrt(b.rng.random()) ** 1.3
+        a = b.rng.uniform(0, 2 * math.pi)
+        p = Vector((r * math.cos(a), r * math.sin(a), 0.0))
+        h = b.rng.uniform(0.2, 0.45) * (1.0 - 0.45 * r / 0.45)
+        w = b.rng.uniform(0.03, 0.05)
+        face = b.rng.uniform(0, 2 * math.pi)  # the way the blade's flat side faces
+        across = Vector((math.cos(face), math.sin(face), 0.0))
+        lean = Vector((-math.sin(face), math.cos(face), 0.0)) * b.rng.choice((-1, 1))
+        out = Vector((math.cos(a), math.sin(a), 0.0)) * (r / 0.45)  # edge blades splay out
+        bend = (lean * b.rng.uniform(0.1, 0.45) + out * 0.25) * h
+        mid = p + Vector((0, 0, h * 0.55)) + bend * 0.3
+        top = p + Vector((0, 0, h)) + bend
+        side = across * (w / 2)
+        pts = [p - side, p + side, mid + side * 0.7, mid - side * 0.7, top]
+        n = across.cross(Vector((0, 0, 1))).normalized() * 0.002
+        withered = b.rng.random() < 0.06
+        for sgn in (1, -1):
+            vs = [bm.verts.new(b.P @ (q + n * sgn)) for q in pts]
+            lower = bm.faces.new(vs[:4] if sgn > 0 else vs[3::-1])
+            upper = bm.faces.new((vs[3], vs[2], vs[4]) if sgn > 0 else (vs[2], vs[3], vs[4]))
+            lower[b.pal] = IDX[b._resolve(dry if withered else base, lower)]
+            upper[b.pal] = IDX[b._resolve(dry if withered else tip, upper)]
+
+
 # ---------------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------------

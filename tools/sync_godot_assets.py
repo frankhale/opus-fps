@@ -5,7 +5,8 @@ For every model this writes the [params] section of its .import file so that:
   * the GLB's PS1_Palette / PS1_Glow materials are replaced by the project's PS1 shader
     materials (godot/materials/ps1_palette.tres and ps1_glow.tres), and a portal's
     PS1_Portal membrane by the shimmering see-through godot/materials/ps1_portal.tres,
-    and a creek's PS1_Water sheet by the flowing godot/materials/ps1_water.tres
+    and a creek's PS1_Water sheet by the flowing godot/materials/ps1_water.tres, and
+    grass by the soft godot/materials/grass.tres
   * terrain and solid scenery get a static trimesh collision body
 
 Run from the repo root after regenerating the assets, then let Godot reimport:
@@ -21,12 +22,15 @@ DST = os.path.join(ROOT, "godot", "assets")
 CATEGORIES = ["terrain", "scenery", "weapons", "pickups", "enemies", "viewmodel", "ammo"]
 
 # Scenery you walk through rather than bump into.
-NO_COLLISION = {"grass_tuft", "flowers", "skull_pile", "bush", "bush_short"}
+NO_COLLISION = {"grass_tuft", "grass_patch", "flowers", "skull_pile", "bush", "bush_short"}
 # Models with a walk-through membrane. scripts/portal.gd builds their frame collision
 # at runtime, since a trimesh of the whole model would make the membrane solid.
 PORTALS = {"portal"}
 # Models with a PS1_Water sheet.
 WATER = {"terrain_creek"}
+# Grass, drawn with the soft grass material (godot/materials/grass.tres) instead of the
+# sharp PS1 one, since it's scattered by the thousand.
+GRASS = {"grass_patch"}
 COLLIDES = {"terrain", "scenery"}
 
 PALETTE_IMPORT = """[remap]
@@ -43,6 +47,7 @@ detect_3d/compress_to=0
 
 
 def glb_import(name, collision):
+    palette = "grass.tres" if name in GRASS else "ps1_palette.tres"
     portal = ""
     if name in PORTALS:
         portal = ''',
@@ -91,7 +96,7 @@ _subresources={{
 }},
 "PS1_Palette": {{
 "use_external/enabled": true,
-"use_external/path": "res://materials/ps1_palette.tres"
+"use_external/path": "res://materials/{palette}"
 }}{portal}
 }}{nodes}
 }}

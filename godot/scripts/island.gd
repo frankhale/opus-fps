@@ -11,11 +11,12 @@ extends Node3D
 ## The ground is one mesh built here from height(), painted like the main level's terrain
 ## (scripts/terrain.gd): the pack's palette material, dimmed the same, with each face
 ## mapped onto one swatch as the tiles are: sand on the beach and under the water,
-## grass inland, so the grass edge steps along the faces. The sea
+## grass inland, so the grass edge steps along the faces. The grassy ground is carpeted
+## with clumps of grass (assets/scenery/grass_patch.glb). The sea
 ## (materials/sea.gdshader) is a 1.6 km sheet at height 0 that reaches the fog on every
 ## side, with surf rolling in to shore.
 ## You can wade out until the water is about 1 m deep, where invisible walls follow the
-## coast round. All of that (ground, sea, walls and the surf's sound) is built here when
+## coast round. All of that (ground, grass, sea, walls and the surf's sound) is built here when
 ## the node enters the tree, also in the editor.
 ##
 ## Everything standing on the island is an ordinary node saved in scenes/island.tscn, to
@@ -66,6 +67,16 @@ const WALL_HEIGHT := 10.0
 const GROUND_MATERIAL := preload("res://materials/ps1_palette.tres")
 const SEA_SHADER := preload("res://materials/sea.gdshader")
 const SURF_SOUND := "res://assets/sfx/surf_loop.wav"
+## Grass on the grassy ground: a clump about every GRASS_SPACING meters (jittered, turned
+## at random and GRASS_SIZE times its real size), in square chunks GRASS_CHUNK meters
+## across that are each drawn only within GRASS_RANGE meters, where the fog has mostly
+## swallowed them anyway. None grows under the ruins (their paving and walls) or the
+## rocks.
+const GRASS_MODEL := "res://assets/scenery/grass_patch.glb"
+const GRASS_SPACING := 0.7
+const GRASS_SIZE := Vector2(1.2, 1.7)
+const GRASS_CHUNK := 12.0
+const GRASS_RANGE := 45.0
 
 ## The ground is levelled for the ruins (the Ruins node), to the natural ground's height
 ## at the group's origin, out to RUIN_FLAT meters round it, blending back into the hills
@@ -117,6 +128,7 @@ func build() -> void:
 		_ruin_level = _natural_height(ruins.position.x, ruins.position.z)
 		ruins.position.y = _ruin_level
 	_build_ground()
+	_build_grass()
 	_build_sea()
 	_build_walls()
 	if not Engine.is_editor_hint():
@@ -257,6 +269,67 @@ func _build_ground() -> void:
 	shape.shape = mesh.create_trimesh_shape()
 	body.add_child(shape)
 	ground.add_child(body)
+
+
+## Scatters grass over the grassy ground, the same every time (it's seeded), as
+## MultiMesh chunks: one draw each, and far ones skipped.
+func _build_grass() -> void:
+	if not ResourceLoader.exists(GRASS_MODEL):
+		return
+	var model: Node = (load(GRASS_MODEL) as PackedScene).instantiate()
+	var found := model.find_children("*", "MeshInstance3D", true, false)
+	var mesh: Mesh = (found[0] as MeshInstance3D).mesh if found else null
+	model.free()
+	if mesh == null:
+		return
+	# Ground taken up by the ruins and rocks, as boxes seen from above.
+	var bare: Array[Rect2] = []
+	var keep_off: Array[Node] = []
+	var ruins := get_node_or_null("Ruins")
+	if ruins:
+		keep_off.append(ruins)
+	var props := get_node_or_null("Props")
+	if props:
+		keep_off.append_array(props.get_children().filter(func(c: Node) -> bool: return c.name.begins_with("rock")))
+	for node in keep_off:
+		for g: GeometryInstance3D in node.find_children("*", "GeometryInstance3D", true, false):
+			var box: AABB = g.global_transform * g.get_aabb()
+			bare.append(Rect2(box.position.x, box.position.z, box.size.x, box.size.z).grow(-0.1))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = SEED + 7
+	var chunks := {}  # chunk (x, z) -> the clumps' transforms
+	var n := int(GROUND_HALF * 2.0 / GRASS_SPACING)
+	for j in n:
+		for i in n:
+			var x := -GROUND_HALF + (i + rng.randf()) * GRASS_SPACING
+			var z := -GROUND_HALF + (j + rng.randf()) * GRASS_SPACING
+			var turn := rng.randf() * TAU
+			var size := rng.randf_range(GRASS_SIZE.x, GRASS_SIZE.y)
+			var h := height(x, z)
+			if not _is_grass(x, z, h) or bare.any(func(r: Rect2) -> bool: return r.has_point(Vector2(x, z))):
+				continue
+			var key := Vector2i(floori(x / GRASS_CHUNK), floori(z / GRASS_CHUNK))
+			if not chunks.has(key):
+				chunks[key] = []
+			chunks[key].append(Transform3D(Basis(Vector3.UP, turn).scaled(Vector3.ONE * size), Vector3(x, h - 0.02, z)))
+	var grass := Node3D.new()
+	grass.name = "Grass"
+	add_child(grass)
+	for key: Vector2i in chunks:
+		var clumps: Array = chunks[key]
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = mesh
+		mm.instance_count = clumps.size()
+		for k in clumps.size():
+			mm.set_instance_transform(k, clumps[k])
+		var chunk := MultiMeshInstance3D.new()
+		chunk.multimesh = mm
+		chunk.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		chunk.visibility_range_end = GRASS_RANGE
+		chunk.visibility_range_end_margin = 5.0
+		chunk.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+		grass.add_child(chunk)
 
 
 func _build_sea() -> void:
