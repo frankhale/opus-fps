@@ -3763,7 +3763,7 @@ def enemy_pumpkin_crab(b):
     The shell, its face, horns and belly follow `body`; the hat bends from `hat` into
     `hat_tip`; each lantern and its string follow their bone. Limbs blend across their
     joints, and the claw's palm and lower finger follow `claw_<side>`."""
-    rind = {"lwood": 3, "orange": 2, "sand": 1}
+    rind = {"lwood": 4, "wood": 2, "orange": 1}
     shell = {"lwood": 3, "wood": 2, "sand": 1}
     horn = {"bone": 3, "lsand": 1}
     tipc = {"bone": 2, "lsand": 1, "lwood": 1}
@@ -3933,9 +3933,9 @@ def enemy_pumpkin_crab(b):
             face(to, bo, bi, ti)
         return b.poly(coords, faces, color=color, glow=glow)
 
-    def glowing_cut(cols, centre, core=0.55):
+    def glowing_cut(cols, centre, core=0.68):
         """A carved hole: a dark cut edge round a hot orange glow with a yellow core."""
-        carve(cols, -0.03, 0.008, "dsoil", k=1.16, centre=centre)
+        carve(cols, -0.03, 0.008, "dsoil", k=1.26, centre=centre)
         carve(cols, -0.03, 0.014, "orange", True, centre=centre)
         carve(cols, -0.03, 0.019, "yellow", True, k=core, centre=centre)
 
@@ -3961,7 +3961,7 @@ def enemy_pumpkin_crab(b):
             bot = 0.28 - 0.24 * u / 0.55 if u < 0.55 else 0.04 + 0.48 * (u - 0.55) / 0.45
             cols.append((s * (9 + 35 * u), 0.28 + 0.24 * u, bot))
         glowing_cut(cols, (s * 28, 0.3))
-    glowing_cut([(a, 0.0, -0.16 * (1 - abs(a) / 8)) for a in (-8, -4, 0, 4, 8)], (0, -0.05), core=0.45)
+    glowing_cut([(a, 0.0, -0.16 * (1 - abs(a) / 8)) for a in (-8, -4, 0, 4, 8)], (0, -0.05), core=0.55)
     cols = []
     n = 28
     for i in range(n):
@@ -3974,7 +3974,7 @@ def enemy_pumpkin_crab(b):
         elif 2 < i < n - 3 and i % 5 == 4:
             bot += 0.55 * h  # and one up from below
         cols.append((a, top, bot))
-    glowing_cut(cols, (0, -0.3), core=0.5)
+    glowing_cut(cols, (0, -0.3), core=0.62)
 
     # Glowing cracks down the grooves of its sides and back.
     for g, t0, t1 in ((90, -0.45, 0.2), (-90, -0.35, 0.3), (126, -0.1, 0.45), (-126, -0.2, 0.35),

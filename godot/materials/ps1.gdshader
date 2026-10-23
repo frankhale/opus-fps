@@ -17,6 +17,9 @@ uniform float affine_strength : hint_range(0.0, 1.0) = 1.0;
 // faces collapsing into a flat, sliding smear.
 uniform float affine_max_texels = 2.0;
 uniform float emission_strength = 0.0;
+// Tints the glow: below 1 in green and blue keeps a bright glow a deep, fiery orange
+// rather than letting it wash out toward white.
+uniform vec3 emission_tint = vec3(1.0);
 // Multiplies the palette color; below 1 darkens a surface (e.g. the ground).
 uniform float albedo_scale = 1.0;
 // Most the per-pixel depth correction may move a pixel, as a fraction of its distance
@@ -59,7 +62,7 @@ void fragment() {
 	ALBEDO = c;
 	ROUGHNESS = 1.0;
 	METALLIC = 0.0;
-	EMISSION = c * emission_strength;
+	EMISSION = c * emission_tint * emission_strength;
 
 	// Snapping moves vertices sideways but keeps their depth, which skews each face's
 	// depth slightly differently, so nearly coplanar surfaces (windows on walls, trim)

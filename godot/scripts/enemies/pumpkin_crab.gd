@@ -26,7 +26,8 @@ extends Enemy
 ## alternating sets, each knee bent to reach its toe (two-bone IK). The body settles to
 ## its feet, rears up and lunges. The claws reach for where each action wants them
 ## (two-bone IK) and their upper fingers open and snap shut. The hat and the hanging
-## lanterns swing on springs with every lurch.
+## lanterns swing on springs with every lurch. Embers drift up from its eyes and the
+## corners of its grin like sparks off a fire, thicker as its face flares.
 
 const MODEL := preload("res://assets/enemies/enemy_pumpkin_crab.glb")
 const SOUNDS := {
@@ -41,13 +42,21 @@ const SOUNDS := {
 const STEP_SOUND := preload("res://assets/sfx/crab_step.wav")
 const GLOW := preload("res://materials/ps1_glow.tres")
 const FLAME := Color(1.0, 0.5, 0.12)
-## The glow material's emission when calm, awake and fully charged.
-const EMBER := 0.7
-const AWAKE := 1.4
-const BLAZE := 3.0
+## The glow material's emission when calm, awake and fully charged: well over the
+## world's glow threshold, so the face and lanterns bloom even in daylight.
+const EMBER := 2.0
+const AWAKE := 3.2
+const BLAZE := 5.5
+## Keeps it a deep, fiery orange (with yellow at the heart of each cut) as it brightens.
+const GLOW_TINT := Vector3(1.0, 0.55, 0.28)
 const LANTERNS := 6
 ## The carved face in the model's own space (+Z is its front), where its light sits.
 const FACE := Vector3(0.0, 0.85, 0.6)
+## Where embers rise from, in the same space: its eyes and the corners of its grin.
+const EMBER_SPOTS := [Vector3(0.28, 1.13, 0.37), Vector3(-0.28, 1.13, 0.37),
+	Vector3(0.45, 0.78, 0.31), Vector3(-0.45, 0.78, 0.31)]
+## Embers per second from each spot when calm, and at full blaze.
+const EMBER_RATE := Vector2(12.0, 30.0)
 
 @export var walk_speed := 1.8
 @export var hunt_speed := 3.4
@@ -113,6 +122,7 @@ var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 var _glow_mat: ShaderMaterial
 var _glow := EMBER
 var _light: OmniLight3D
+var _embers: Array[GPUParticles3D] = []
 ## Wind-up glow, 0 to 1.
 var _charge := 0.0
 ## Rearing up clacking its claws as it notices the player (seconds left).
@@ -174,6 +184,7 @@ func _ready() -> void:
 	add_child(_strike_audio)
 	# Its face and lanterns: its own copy of the glow material, so they can flicker.
 	_glow_mat = GLOW.duplicate()
+	_glow_mat.set_shader_parameter("emission_tint", GLOW_TINT)
 	for m: GeometryInstance3D in _meshes:
 		var mi := m as MeshInstance3D
 		if mi == null or mi.mesh == null:
@@ -190,6 +201,7 @@ func _ready() -> void:
 	_strafe_dir = 1.0 if randf() < 0.5 else -1.0
 	_state_timer = randf_range(idle_time.x, idle_time.y)
 	_setup_rig()
+	_setup_embers()
 
 
 func _eye_point() -> Vector3:
@@ -299,7 +311,10 @@ func _physics_process(delta: float) -> void:
 	_glow = lerpf(_glow, want + (BLAZE - AWAKE) * _charge, 1.0 - exp(-4.0 * delta))
 	var flicker := 0.88 + 0.12 * sin(_t * 17.0) * sin(_t * 7.3 + 1.0)
 	_glow_mat.set_shader_parameter("emission_strength", _glow * flicker)
-	_light.light_energy = 0.45 * _glow * flicker
+	_light.light_energy = 0.3 * _glow * flicker
+	var heat := clampf((_glow - EMBER) / (BLAZE - EMBER), 0.0, 1.0)
+	for e in _embers:
+		e.amount_ratio = lerpf(EMBER_RATE.x, EMBER_RATE.y, heat) / EMBER_RATE.y
 	_flash_amount = move_toward(_flash_amount, 0.0, delta * 6.0)
 	_set_glow(FLAME, maxf(_flash_amount, _charge * 0.25))
 	_animate(delta)
@@ -447,7 +462,54 @@ func _update_lanterns(delta: float) -> void:
 			_lantern_size[i] = move_toward(_lantern_size[i], 1.0, delta * 1.5)
 
 
+## Embers rising from its eyes and the corners of its grin: tiny glowing sparks, yellow
+## as they leave, cooling through orange to a dull red and winking out as they drift up
+## and away on the air. They're left behind in the world as it moves, so they trail
+## off it. Each emitter rides on its body bone, so they follow its face as it rears.
+func _setup_embers() -> void:
+	var m := ParticleProcessMaterial.new()
+	m.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	m.emission_sphere_radius = 0.05
+	m.direction = Vector3(0.0, 1.0, 0.3)
+	m.spread = 35.0
+	m.initial_velocity_min = 0.25
+	m.initial_velocity_max = 0.7
+	m.gravity = Vector3(0.0, 0.9, 0.0)  # carried up on the heat
+	m.damping_min = 0.4
+	m.damping_max = 1.0
+	m.turbulence_enabled = true
+	m.turbulence_noise_strength = 0.6
+	m.turbulence_noise_scale = 2.5
+	m.turbulence_influence_min = 0.05
+	m.turbulence_influence_max = 0.15
+	m.scale_min = 0.05
+	m.scale_max = 0.09
+	m.scale_curve = FX.curve([Vector2(0, 1), Vector2(0.7, 0.7), Vector2(1, 0)])
+	m.color_ramp = FX.ramp([Color(1.0, 0.7, 0.2), Color(1.0, 0.42, 0.06), Color(0.8, 0.14, 0.03),
+		Color(0.35, 0.05, 0.02, 0.0)], [0.0, 0.3, 0.7, 1.0])
+	# Solid rather than additive, so they show up against the bright sand and sky; bright
+	# enough to bloom.
+	var mesh := FX.quad(false, 1.5)
+	var parent: Node3D = _model
+	if _skeleton:
+		var bone := BoneAttachment3D.new()
+		bone.bone_name = "body"
+		_skeleton.add_child(bone)
+		parent = bone
+	for spot: Vector3 in EMBER_SPOTS:
+		var e := FX.emitter(int(EMBER_RATE.y * 1.6), 1.6, m, mesh, false)
+		e.randomness = 0.5
+		e.layers = ENEMY_VISUAL_LAYER
+		parent.add_child(e)
+		# Placed by the rest pose: the attachment carries it with the body from there.
+		e.position = (_body_rest.affine_inverse() * spot) if _skeleton else spot
+		e.emitting = true
+		_embers.append(e)
+
+
 func _on_death() -> void:
+	for e in _embers:
+		e.emitting = false
 	_state = State.IDLE
 	_charge = 0.0
 	for e in [[Color(0.5, 0.33, 0.2), 0.7], [Color(0.78, 0.35, 0.12), 0.8], [FLAME, 3.0], [Color(1.0, 0.8, 0.3), 3.0]]:
@@ -460,6 +522,8 @@ func _on_death() -> void:
 
 func _on_respawn() -> void:
 	_stop()
+	for e in _embers:
+		e.emitting = true
 	_glow = EMBER
 	for i in _lantern_gone.size():
 		_lantern_gone[i] = 0.0
