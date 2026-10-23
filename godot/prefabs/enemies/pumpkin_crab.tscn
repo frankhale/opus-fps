@@ -1,0 +1,17 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/enemies/pumpkin_crab.gd" id="1_06rqh"]
+[ext_resource type="Script" path="res://scripts/editor_preview.gd" id="2_wm1w0"]
+[ext_resource type="PackedScene" path="res://assets/enemies/enemy_pumpkin_crab.glb" id="3_iu2v8"]
+
+[node name="pumpkin_crab" type="CharacterBody3D" unique_id=352173096]
+script = ExtResource("1_06rqh")
+max_health = 120.0
+aggro_radius = 6.0
+knockback = 0.08
+gem_drops = 2
+
+[node name="EditorPreview" type="Node3D" parent="." unique_id=340775683]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, 0)
+script = ExtResource("2_wm1w0")
+model = ExtResource("3_iu2v8")

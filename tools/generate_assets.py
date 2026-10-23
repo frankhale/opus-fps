@@ -3740,6 +3740,398 @@ def enemy_treant(b):
         b.limb(p, p + Vector((0, 0.07, -0.03)), 0.028, 0.0, 5, claw)
         skin(m, f"foot_{side}")
 
+@asset("enemies")
+def enemy_pumpkin_crab(b):
+    """A pumpkin crab for Halloween, faces -Y, about 2.3 m across its legs and 1.6 m tall to
+    the tip of its hat: a crab whose shell is a big lobed pumpkin of stony orange rind,
+    carved on its front with a glowing face (slanted triangle eyes, a nose and a wide
+    jagged grin, each cut with a dark rim round a hot orange glow and a yellow core) and
+    glowing cracks down the grooves of its sides. Bony horns curve up all over its back,
+    and from wire hooks on six of them hang little glowing jack-o'-lanterns on strings,
+    with cobweb strands slung between the horns. A battered, droopy witch's hat with a
+    buckled band sits askew on top, its crumpled tip curling over. Two huge spiny claws
+    reach forward, glowing inside the jaw between their toothed fingers, and it stands on
+    eight spiky legs with pale pointed tips.
+
+    Rigged for animation (rest pose as modeled). Sides are its own: l is +X.
+      body (root, up through the shell) > hat (brim to the middle of the cone) > hat_tip
+      body > lantern_<k> (k = 0 to 5: from the hook down to the lantern, hanging)
+      body > arm_<side>_0 (shoulder to elbow) > arm_<side>_1 (to the wrist)
+           > claw_<side> (wrist to the hinge of the jaw) > pincer_<side> (the upper finger)
+      body > leg_<side>_<k>_0 (hip to knee) > leg_<side>_<k>_1 (knee to toe), k = 0 at the
+           front to 3; each toe is its bone's tail, on the ground.
+    The shell, its face, horns and belly follow `body`; the hat bends from `hat` into
+    `hat_tip`; each lantern and its string follow their bone. Limbs blend across their
+    joints, and the claw's palm and lower finger follow `claw_<side>`."""
+    rind = {"lwood": 3, "orange": 2, "sand": 1}
+    shell = {"lwood": 3, "wood": 2, "sand": 1}
+    horn = {"bone": 3, "lsand": 1}
+    tipc = {"bone": 2, "lsand": 1, "lwood": 1}
+    hatc = {"dbark": 3, "wood": 1}
+    sides = {"l": 1, "r": -1}
+
+    # The pumpkin: lobed, flattened top and bottom with a dimple at each, its stem axis
+    # tipped back so the carved face looks forward and a little up.
+    PC = Vector((0.0, 0.04, 0.84))
+    RX, RY, RZ = 0.62, 0.54, 0.4
+    LOBES = 10
+    tilt = Matrix.Rotation(math.radians(-12), 3, "X")
+
+    def pk_local(a, t):
+        ar = math.radians(a)
+        ang = t * math.pi / 2
+        g = 0.5 - 0.5 * math.cos(LOBES * ar)  # 0 on a lobe, 1 in a groove
+        r = max(math.cos(ang), 0.0) ** 0.7 * (1 - 0.08 * g * g)
+        z = math.sin(ang) * RZ * (1 - 0.35 * smoothstep(0.75, 1.0, abs(t)))
+        return Vector((RX * r * math.sin(ar), -RY * r * math.cos(ar), z))
+
+    def pk_normal(a, t):
+        p = pk_local(a, t)
+        return tilt @ Vector((p.x / RX ** 2, p.y / RY ** 2, p.z / RZ ** 2)).normalized()
+
+    def pk(a, t, off=0.0):
+        """The point on the shell at angle a (degrees from -Y toward +X) and height t (-1
+        at the bottom to 1 at the top), `off` out from its surface."""
+        return PC + tilt @ pk_local(a, t) + pk_normal(a, t) * off
+
+    # Layout shared by the skeleton and the mesh.
+    arm = {side: [Vector((s * 0.32, -0.34, 0.6)), Vector((s * 0.76, -0.5, 0.74)), Vector((s * 0.66, -0.84, 0.5))]
+           for side, s in sides.items()}
+
+    def claw_frame(s):
+        """The claw's own frame at the wrist: x along the claw (forward, in and down), z up."""
+        f = Vector((-s * 0.45, -1.0, -0.42)).normalized()
+        u = (Vector((0, 0, 1)) - f * f.z).normalized()
+        sd = f.cross(u)
+        rot = [math.degrees(x) for x in Matrix((f, -sd, u)).transposed().to_euler()]
+        return rot, M(arm["l" if s > 0 else "r"][2], rot)
+
+    HINGE = (0.46, 0.0, 0.11)
+
+    def dactyl_tip(s):
+        return (0.9, -s * 0.11, 0.0)
+
+    legs = {}
+    for side, s in sides.items():
+        for k, y in enumerate((-0.2, -0.02, 0.15, 0.3)):
+            hip = Vector((s * 0.4, y, 0.52))
+            knee = Vector((s * 0.88, y * 1.5 - 0.04, 0.8 - 0.03 * k))
+            toe = Vector((s * 1.3, y * 2.2 - 0.05, 0.0))
+            legs[side, k] = (hip, knee, toe)
+
+    # Hat: its base sits in the dimple on top, tipped back and to its right.
+    HB = PC + tilt @ Vector((-0.03, 0.13, 0.31))
+    HROT, HS = (-20, -10, 15), 1.35
+    HM = M(HB, HROT, HS)
+    hat_mid, hat_end = Vector((0.03, 0.07, 0.34)), Vector((0.25, 0.2, 0.38))
+
+    # Horns: (angle, height, length). Lanterns hang from hooks on the ones in LANTERNS.
+    horns = [(-68, 0.5, 0.3), (66, 0.55, 0.32), (-108, 0.62, 0.36), (112, 0.6, 0.34), (-148, 0.66, 0.32),
+             (150, 0.7, 0.3), (180, 0.35, 0.26), (-40, 0.74, 0.22), (42, 0.72, 0.24), (-88, 0.05, 0.2),
+             (90, 0.0, 0.2), (-130, 0.15, 0.22), (132, 0.2, 0.2), (-58, -0.25, 0.14), (60, -0.2, 0.15),
+             (165, -0.1, 0.18), (-165, 0.0, 0.18)]
+    LANTERNS = [(0, 0.2), (1, 0.15), (2, 0.24), (3, 0.18), (11, 0.14), (12, 0.2)]  # (horn, string length)
+
+    def horn_path(a, t, ln):
+        base = pk(a, t, -0.03)
+        d = (pk_normal(a, t) + Vector((0, 0, 0.9 if t > 0.3 else 0.4))).normalized()
+        return [base, base + d * ln * 0.5, base + d * ln + Vector((0, 0, ln * 0.12))]
+
+    def hook(i):
+        """Where lantern i's string hangs from: the end of a wire hook out from its horn."""
+        h, ln = LANTERNS[i]
+        a, t, l = horns[h]
+        p = horn_path(a, t, l)
+        mid = p[0].lerp(p[2], 0.6)
+        n = pk_normal(a, t)
+        out = Vector((n.x, n.y, 0)).normalized()
+        return mid, mid + out * 0.08 + Vector((0, 0, 0.06)), mid + out * 0.15 + Vector((0, 0, 0.04)), ln
+
+    # Skeleton (before any geometry: adding the weight layer invalidates vertices).
+    b.bone("body", (0, 0, 0.5), (0, 0, 1.0))
+    b.bone("hat", HM @ Vector((0, 0, 0)), HM @ hat_mid, "body")
+    b.bone("hat_tip", HM @ hat_mid, HM @ hat_end, "hat")
+    for i in range(len(LANTERNS)):
+        _, _, hang, ln = hook(i)
+        b.bone(f"lantern_{i}", hang, hang - Vector((0, 0, ln)), "body")
+    for side, s in sides.items():
+        S, E, W = arm[side]
+        _, MW = claw_frame(s)
+        b.bone(f"arm_{side}_0", S, E, "body")
+        b.bone(f"arm_{side}_1", E, W, f"arm_{side}_0")
+        b.bone(f"claw_{side}", W, MW @ Vector(HINGE), f"arm_{side}_1")
+        b.bone(f"pincer_{side}", MW @ Vector(HINGE), MW @ Vector(dactyl_tip(s)), f"claw_{side}")
+        for k in range(4):
+            hip, knee, toe = legs[side, k]
+            b.bone(f"leg_{side}_{k}_0", hip, knee, "body")
+            b.bone(f"leg_{side}_{k}_1", knee, toe, f"leg_{side}_{k}_0")
+
+    def mark():
+        return len(b.bm.verts)
+
+    def since(m):
+        """The vertices made since mark() returned m."""
+        return [v for v in list(b.bm.verts)[m:] if v.is_valid]
+
+    def skin(m, bone):
+        b.weigh(since(m), {bone: 1.0})
+
+    def skin_chain(m, joints, bones):
+        """Skins to the nearest bone of a chain, blending across each joint."""
+        for v in since(m):
+            best = None
+            for i, (a, c) in enumerate(zip(joints, joints[1:])):
+                d = c - a
+                t = min(max((v.co - a).dot(d) / d.length_squared, 0.0), 1.0)
+                dist = (v.co - (a + d * t)).length
+                if best is None or dist < best[0]:
+                    best = (dist, i, t)
+            _, i, t = best
+            w = {bones[i]: 1.0}
+            if t > 0.85 and i + 1 < len(bones):
+                k = (t - 0.85) / 0.3
+                w = {bones[i]: 1 - k, bones[i + 1]: k}
+            elif t < 0.15 and i > 0:
+                k = (0.15 - t) / 0.3
+                w = {bones[i]: 1 - k, bones[i - 1]: k}
+            b.weigh([v], w)
+
+    def carve(cols, off_in, off_out, color, glow=False, k=1.0, centre=(0, 0)):
+        """A slab set into the shell from off_in to off_out (meters out from its surface),
+        filling between a top and a bottom edge: cols are (a, t_top, t_bottom) from one end
+        to the other, and an edge may meet the other at either end. k scales it about
+        `centre` (a, t)."""
+        ac, tc = centre
+        coords, faces, seen = [], [], set()
+        ids = []
+        for a, tt, tb in cols:
+            a, tt, tb = ac + (a - ac) * k, tc + (tt - tc) * k, tc + (tb - tc) * k
+            col = []
+            for off in (off_out, off_in):
+                coords.append(pk(a, tt, off))
+                top = len(coords) - 1
+                if tt - tb > 1e-4:
+                    coords.append(pk(a, tb, off))
+                col += [top, len(coords) - 1]
+            ids.append(col)  # top out, bottom out, top in, bottom in
+
+        def face(*ix):
+            f = []
+            for i in ix:
+                if i not in f:
+                    f.append(i)
+            if len(f) >= 3 and frozenset(f) not in seen:
+                seen.add(frozenset(f))
+                faces.append(tuple(f))
+
+        for (to0, bo0, ti0, bi0), (to1, bo1, ti1, bi1) in zip(ids, ids[1:]):
+            face(to0, to1, bo1, bo0)
+            face(ti0, bi0, bi1, ti1)
+            face(to0, ti0, ti1, to1)
+            face(bo0, bo1, bi1, bi0)
+        for to, bo, ti, bi in (ids[0], ids[-1]):
+            face(to, bo, bi, ti)
+        return b.poly(coords, faces, color=color, glow=glow)
+
+    def glowing_cut(cols, centre, core=0.55):
+        """A carved hole: a dark cut edge round a hot orange glow with a yellow core."""
+        carve(cols, -0.03, 0.008, "dsoil", k=1.16, centre=centre)
+        carve(cols, -0.03, 0.014, "orange", True, centre=centre)
+        carve(cols, -0.03, 0.019, "yellow", True, k=core, centre=centre)
+
+    # ---- The shell, with everything on it following `body` ----
+    m = mark()
+    NA = 4 * LOBES
+    ts = [-0.88, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.68, 0.84, 0.94]
+    coords = [pk(0, -1)] + [pk(360 * j / NA, t) for t in ts for j in range(NA)] + [pk(0, 1)]
+    faces = [(0, 1 + (j + 1) % NA, 1 + j) for j in range(NA)]
+    for i in range(len(ts) - 1):
+        for j in range(NA):
+            j1 = (j + 1) % NA
+            faces.append((1 + i * NA + j, 1 + i * NA + j1, 1 + (i + 1) * NA + j1, 1 + (i + 1) * NA + j))
+    top = len(coords) - 1
+    faces += [(1 + (len(ts) - 1) * NA + j, 1 + (len(ts) - 1) * NA + (j + 1) % NA, top) for j in range(NA)]
+    b.jitter(b.poly(coords, faces, color=rind), 0.006)
+
+    # The carved face: angry slanted eyes, a little nose and a wide jagged grin.
+    for s in (-1, 1):
+        cols = []
+        for i in range(7):
+            u = i / 6
+            bot = 0.28 - 0.24 * u / 0.55 if u < 0.55 else 0.04 + 0.48 * (u - 0.55) / 0.45
+            cols.append((s * (9 + 35 * u), 0.28 + 0.24 * u, bot))
+        glowing_cut(cols, (s * 28, 0.3))
+    glowing_cut([(a, 0.0, -0.16 * (1 - abs(a) / 8)) for a in (-8, -4, 0, 4, 8)], (0, -0.05), core=0.45)
+    cols = []
+    n = 28
+    for i in range(n):
+        a = -54 + 108 * i / (n - 1)
+        mid = -0.36 + 0.2 * (a / 54) ** 2
+        h = 0.24 * math.sqrt(max(1 - (a / 54) ** 2, 0.0))
+        top, bot = mid + h / 2, mid - h / 2
+        if 2 < i < n - 3 and i % 5 == 2:
+            top -= 0.55 * h  # a tooth down from above
+        elif 2 < i < n - 3 and i % 5 == 4:
+            bot += 0.55 * h  # and one up from below
+        cols.append((a, top, bot))
+    glowing_cut(cols, (0, -0.3), core=0.5)
+
+    # Glowing cracks down the grooves of its sides and back.
+    for g, t0, t1 in ((90, -0.45, 0.2), (-90, -0.35, 0.3), (126, -0.1, 0.45), (-126, -0.2, 0.35),
+                      (162, -0.3, 0.3), (-162, -0.4, 0.15)):
+        carve([(g - 1.8, t1, t0 + 0.12), (g, t1 + 0.06, t0), (g + 1.8, t1 - 0.04, t0 + 0.06)], -0.02, 0.006,
+              "orange", True)
+
+    # Knobbly scales over the upper shell, clear of the face.
+    for t in (0.3, 0.55, 0.75):
+        for a in range(-168, 180, 26 if t < 0.7 else 34):
+            a += b.rng.uniform(-5, 5) + (13 if t == 0.55 else 0)
+            if abs(a) < 62 and t < 0.7:
+                continue
+            b.ico(1, 0, loc=pk(a, t, 0.0), scale=b.rng.uniform(0.03, 0.045), color={"wood": 1, "lwood": 2},
+                  jit=0.006)
+
+    # The belly under it all, and its mouthparts under the grin.
+    b.ico(1, 1, loc=(0, 0.05, 0.5), scale=(0.44, 0.38, 0.15), color={"wood": 2, "lwood": 1}, jit=0.01)
+    b.ico(1, 1, loc=(0, -0.34, 0.46), scale=(0.16, 0.08, 0.06), color={"flesh": 2, "wood": 1})
+
+    # Horns curving up all over its back, each from a knobbly collar.
+    tips = []
+    for a, t, ln in horns:
+        p = horn_path(a, t, ln)
+        r = 0.055 * ln / 0.3 + 0.02
+        b.ico(1, 0, loc=p[0] + pk_normal(a, t) * 0.02, scale=r * 1.5, color=shell, jit=0.008)
+        b.tube(p, [r, r * 0.55, 0.0], seg=5, color=horn)
+        tips.append(p[2])
+    # Cobweb strands slung between the horns, sagging.
+    for i, j in ((2, 4), (3, 5), (0, 2), (4, 6), (7, 8)):
+        p, q = tips[i].lerp(tips[j], 0.0) - Vector((0, 0, 0.03)), tips[j] - Vector((0, 0, 0.03))
+        b.tube([p, p.lerp(q, 0.5) - Vector((0, 0, 0.08)), q], [0.005, 0.005, 0.005], seg=3, color="lsand")
+    # The wire hooks the lanterns hang from.
+    for i in range(len(LANTERNS)):
+        p0, p1, p2, _ = hook(i)
+        b.tube([p0, p1, p2 + Vector((0, 0, 0.01))], [0.01, 0.009, 0.008], seg=4, color="dsoil")
+    skin(m, "body")
+
+    # ---- Lanterns: little glowing jack-o'-lanterns on strings ----
+    for i in range(len(LANTERNS)):
+        _, _, hang, ln = hook(i)
+        c = hang - Vector((0, 0, ln))
+        m = mark()
+        b.beam(hang, c + Vector((0, 0, 0.05)), 0.007, color="dsoil")
+        b.lathe([(0.0, -0.045), (0.04, -0.04), (0.056, -0.01), (0.05, 0.025), (0.0, 0.035)], seg=6,
+                loc=c, rot=(0, 0, b.rng.uniform(0, 60)), scale=1.3, color="orange", glow=True)
+        b.limb(c + Vector((0, 0, 0.025)), c + Vector((0.008, 0, 0.055)), 0.012, 0.008, 4, "dbark")
+        skin(m, f"lantern_{i}")
+
+    # ---- The hat: a droopy, ragged brim and a crumpled cone curling over at the tip ----
+    with b.at(HB, HROT, HS):
+        m = mark()
+        na, rs = 18, [0.17, 0.27, 0.37, 0.46]
+        rag = [b.rng.uniform(-0.07, 0.03) for _ in range(na)]
+        coords = []
+        for under in (False, True):
+            for i, r in enumerate(rs):
+                u = i / (len(rs) - 1)
+                for k in range(na):
+                    a = 2 * math.pi * k / na
+                    rr = r * (1 + rag[k] * u)
+                    z = -0.07 * u * u + 0.03 * u * math.sin(3 * a + 0.7) + 0.015 * u * math.sin(7 * a)
+                    z -= (0.03 - 0.018 * u) if under else 0.0
+                    coords.append((rr * math.cos(a), rr * math.sin(a), z))
+        L = len(rs) * na
+        faces = []
+        for k in range(na):
+            k1 = (k + 1) % na
+            for i in range(len(rs) - 1):
+                faces.append((i * na + k, i * na + k1, (i + 1) * na + k1, (i + 1) * na + k))
+                faces.append((L + (i + 1) * na + k, L + (i + 1) * na + k1, L + i * na + k1, L + i * na + k))
+            o = (len(rs) - 1) * na
+            faces.append((o + k, o + k1, L + o + k1, L + o + k))
+            faces.append((k, L + k, L + k1, k1))
+        b.poly(coords, faces, color=hatc)
+        # Band and buckle.
+        b.limb((0, 0, 0.015), (0, 0, 0.075), 0.2, 0.19, 9, "dsoil")
+        b.box((0.09, 0.03, 0.075), (0.0, -0.195, 0.045), rot=(0, 0, 0), color="brass")
+        b.box((0.05, 0.034, 0.04), (0.0, -0.195, 0.045), color="dsoil")
+        cone = [(0, 0, -0.01), (0, 0, 0.1), (0.01, 0.03, 0.22), hat_mid, (0.07, 0.13, 0.44), (0.13, 0.2, 0.5),
+                (0.2, 0.24, 0.49), (0.25, 0.24, 0.43), hat_end, (0.22, 0.17, 0.37)]
+        mc = mark()
+        rings = b.tube(cone, [0.19, 0.165, 0.13, 0.095, 0.065, 0.045, 0.034, 0.025, 0.018, 0.0], seg=8, color=hatc)
+        b.jitter([v for r in rings[1:-1] for v in r], 0.008)
+        skin(m, "hat")
+        for i, ring in enumerate(rings):
+            b.weigh(ring, {"hat": 1.0} if i < 3 else {"hat": 0.5, "hat_tip": 0.5} if i == 3 else {"hat_tip": 1.0})
+        # A little brass charm on a ring hanging off the tip.
+        m = mark()
+        tip = Vector(cone[-1])
+        b.limb(tip, tip + Vector((0.0, 0.0, -0.05)), 0.006, 0.006, 4, "brass")
+        b.ring(0.018, 0.006, 6, loc=tip + Vector((0, 0, -0.07)), rot=(90, 0, 0), color="brass")
+        skin(m, "hat_tip")
+
+    # ---- Claws: huge and spiny, glowing inside the jaw ----
+    for side, s in sides.items():
+        S, E, W = arm[side]
+        rot, MW = claw_frame(s)
+        m = mark()
+        b.tube([S, S.lerp(E, 0.5) + Vector((0, 0, 0.03)), E], [0.085, 0.09, 0.075], seg=7, color=shell)
+        b.ico(1, 1, loc=E, scale=0.085, color=shell, jit=0.01)  # elbow
+        b.tube([E, E.lerp(W, 0.5), W], [0.075, 0.075, 0.09], seg=7, color=shell)
+        for p, d in ((S.lerp(E, 0.4), (s * 0.3, 0, 1)), (S.lerp(E, 0.75), (s * 0.5, 0.2, 1)),
+                     (E.lerp(W, 0.5), (s * 0.8, 0, 0.6))):
+            p = p + Vector(d).normalized() * 0.06
+            b.limb(p, p + Vector(d).normalized() * 0.1, 0.03, 0.0, 5, horn)
+        skin_chain(m, [S - Vector((s * 0.2, 0, 0)), S, E, W, MW @ Vector(HINGE)],
+                   ["body", f"arm_{side}_0", f"arm_{side}_1", f"claw_{side}"])
+        with b.at(W, rot):
+            # The palm and the lower finger, with spines along the outside and teeth along
+            # the finger's top. Local x runs along the claw, z up; the outside is y = s.
+            m = mark()
+            b.ico(1, 1, loc=(0.0, 0, 0), scale=0.11, color=shell, jit=0.01)
+            b.ico(1, 1, loc=(0.26, 0, 0.0), scale=(0.3, 0.17, 0.2), color=shell, jit=0.012)
+            for a in (0.1, 0.24, 0.38):
+                b.limb((a, s * 0.06, 0.15), (a + 0.05, s * 0.11, 0.29), 0.035, 0.0, 5, horn)
+                b.limb((a + 0.04, s * 0.15, 0.0), (a + 0.08, s * 0.25, 0.03), 0.026, 0.0, 5, horn)
+            b.ico(1, 1, loc=(0.52, 0.0, 0.03), scale=(0.1, 0.08, 0.07), color="orange", glow=True)
+            b.ico(1, 0, loc=(0.22, -s * 0.16, 0.02), scale=(0.1, 0.02, 0.05), color="orange", glow=True)
+            b.tube([(0.48, 0, -0.05), (0.64, -s * 0.03, -0.09), (0.78, -s * 0.07, -0.09), (0.9, -s * 0.11, -0.03)],
+                   [0.09, 0.07, 0.045, 0.0], seg=6, color=shell)
+            for a in (0.6, 0.7, 0.79):
+                y = -s * (0.03 + (a - 0.6) * 0.3)
+                b.limb((a, y, -0.06), (a + 0.012, y, 0.0), 0.022, 0.0, 4, horn)
+            skin(m, f"claw_{side}")
+            # The upper finger, which opens.
+            m = mark()
+            b.tube([(0.44, 0, 0.12), (0.62, -s * 0.03, 0.15), (0.78, -s * 0.07, 0.1), dactyl_tip(s)],
+                   [0.085, 0.065, 0.04, 0.0], seg=6, color=shell)
+            for a in (0.58, 0.68, 0.77):
+                y = -s * (0.03 + (a - 0.6) * 0.3)
+                z = 0.15 - 0.3 * max(a - 0.62, 0) - 0.05
+                b.limb((a, y, z), (a + 0.012, y, z - 0.06), 0.02, 0.0, 4, horn)
+            b.limb((0.4, s * 0.04, 0.2), (0.47, s * 0.08, 0.31), 0.03, 0.0, 5, horn)
+            skin(m, f"pincer_{side}")
+
+    # ---- Legs: eight spiky legs with pale pointed tips ----
+    for side, s in sides.items():
+        for k in range(4):
+            hip, knee, toe = legs[side, k]
+            ankle = knee.lerp(toe, 0.62) + Vector((s * 0.05, 0, 0))
+            m = mark()
+            b.tube([hip, hip.lerp(knee, 0.5) + Vector((0, 0, 0.05)), knee], [0.09, 0.088, 0.075], seg=6, color=shell)
+            b.ico(1, 1, loc=knee, scale=0.085, color=shell, jit=0.008)
+            b.tube([knee, knee.lerp(ankle, 0.5) + Vector((s * 0.02, 0, 0)), ankle], [0.078, 0.072, 0.058], seg=6,
+                   color=shell)
+            b.ico(1, 0, loc=ankle, scale=0.06, color=shell)
+            b.tube([ankle, ankle.lerp(toe, 0.5) + Vector((s * 0.03, 0, 0)), toe], [0.056, 0.036, 0.0], seg=6,
+                   color=tipc)
+            for p, d in ((hip.lerp(knee, 0.45), (s * 0.2, 0, 1)), (knee.lerp(ankle, 0.5), (s * 1, 0, 0.3))):
+                d = Vector(d).normalized()
+                p = p + d * 0.05
+                b.limb(p, p + d * 0.08, 0.024, 0.0, 4, horn)
+            skin_chain(m, [hip - Vector((s * 0.15, 0, 0)), hip, knee, toe],
+                       ["body", f"leg_{side}_{k}_0", f"leg_{side}_{k}_1"])
+
+
 # ---------------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------------

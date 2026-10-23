@@ -25,6 +25,8 @@ the world, written straight into the Godot project at godot/assets/sfx/.
                      snapping out, the swing of its tail, the spiked hit, and its cries
   treant_alert/charge/swipe/hit/slam/roots/hurt/die/step.wav   the treant: a creaking
                      wooden groan, its claws, the ground slam and roots, splintering wood
+  crab_alert/charge/snap/hit/throw/hurt/die/step.wav   the pumpkin crab: a crackly
+                     cackle, clacking claws, a hollow pumpkin knock, a flung, flaring lantern
 
 Loop files get a .import that tells Godot to loop them. Run from the repo root:
   python3 tools/generate_sfx.py
@@ -610,6 +612,103 @@ def treant_sounds(rng):
                                  [s * 0.2 for s in rustle(n, rng, 0.1, 120)]), 0.55)
 
 
+def crab_sounds(rng):
+    """The pumpkin crab: a crackly cackle and clacking claws, the hard snap of a pinch,
+    the hollow knock of its pumpkin shell, the whoosh and flare of a thrown lantern, and
+    its tiny clicking feet."""
+    def clack(n, delay, gain, freq=1250.0):
+        """Two hard shell edges striking: a bright click ringing briefly, hollow."""
+        d = int(delay * RATE)
+        k = int(0.05 * RATE)
+        click = [s * e for s, e in zip(highpass(noise(k, rng), 0.35), env(k, 0.0002, 0.003))]
+        ring = tone(k, freq * rng.uniform(0.9, 1.1), 0.008, 0.0003, (1.0, 0.0, 0.4, 0.0, 0.2))
+        body = [(c + r * 0.7) * gain for c, r in zip(click, ring)]
+        return ([0.0] * d + body + [0.0] * n)[:n]
+
+    def crackle(n, rate, gain=1.0):
+        """Fire: sparse pops at rate(t) per second (t from 0 to 1) over a soft roar."""
+        x = [0.0] * n
+        i = 0
+        while i < n:
+            amp = gain * rng.uniform(0.3, 1.0)
+            for j in range(rng.randint(10, 40)):
+                if i + j < n:
+                    x[i + j] += rng.uniform(-1, 1) * amp * math.exp(-j / 6)
+            i += int(RATE / max(rate(i / n), 1.0) * rng.uniform(0.3, 1.7))
+        roar = lowpass(lowpass(noise(n, rng), 0.05), 0.08)
+        return mix(highpass(x, 0.3), [r * 1.5 * gain for r in roar])
+
+    def cackle(n, syllables, p0, p1, gain=1.0):
+        """A witchy cackle: quick nasal "heh"s, each falling a little, the run sinking from
+        p0 to p1 Hz."""
+        out, ph = [0.0] * n, 0.0
+        span = n / syllables
+        for k in range(syllables):
+            s0, f = int(k * span), p0 + (p1 - p0) * k / max(syllables - 1, 1)
+            m = int(span * 0.75)
+            for j in range(m):
+                if s0 + j >= n:
+                    break
+                t = j / m
+                ph += 2 * math.pi * f * (1 - 0.15 * t) / RATE
+                e = min(t / 0.08, 1.0) * (1 - t) ** 1.5
+                out[s0 + j] = gain * e * sum(a * math.sin(ph * (h + 1)) for h, a in enumerate((1.0, 0.8, 0.6, 0.5, 0.3)))
+        return highpass(lowpass(out, 0.4), 0.05)
+
+    # Alert: a cackle over crackling flame as its face flares, both claws clacking.
+    n = int(1.1 * RATE)
+    fire = [c * min(i / (0.15 * RATE), 1.0) * 0.35 for i, c in enumerate(crackle(n, lambda t: 40 + 60 * t))]
+    clacks = mix(*[clack(n, 0.05 + 0.12 * k + rng.uniform(-0.02, 0.02), 0.7) for k in range(8)])
+    write("crab_alert.wav", mix(cackle(n, 7, 560, 400, 0.8), fire, clacks), 0.75)
+
+    # Charge: flame drawn up and roaring, crackling faster, a claw gaping open.
+    n = int(0.6 * RATE)
+    build = [min(i / n * 1.25, 1.0) ** 1.5 for i in range(n)]
+    write("crab_charge.wav", [c * b for c, b in zip(crackle(n, lambda t: 30 + 150 * t), build)], 0.55)
+
+    # Snap: the claw slammed shut, a hard double clack with a short whoosh before it.
+    n = int(0.3 * RATE)
+    air, y, whoosh = noise(n, rng), 0.0, []
+    for i, a in enumerate(air):
+        t = min(i / (0.1 * RATE), 1.0)
+        y += (0.05 + 0.3 * t * t) * (a - y)
+        whoosh.append(y * t * (1.0 if i < 0.1 * RATE else 0.0) * 0.5)
+    write("crab_snap.wav", mix(whoosh, clack(n, 0.1, 1.0, 1100), clack(n, 0.112, 0.7, 1500)), 0.8)
+
+    # Hit: the pinch landing, a thump and a crunch.
+    n = int(0.35 * RATE)
+    crunch = [s * e * 0.6 for s, e in zip(lowpass(noise(n, rng), 0.4), env(n, 0.002, 0.05))]
+    write("crab_hit.wav", mix([s * 0.9 for s in sweep_thump(n, 140, 60, 0.03, 0.08)], crunch, clack(n, 0.0, 0.8)), 0.85)
+
+    # Throw: a lantern snapped off its string and flung, flaring as it goes.
+    n = int(0.6 * RATE)
+    flare = [c * math.sin(math.pi * min(i / n * 1.2, 1.0)) for i, c in enumerate(crackle(n, lambda t: 60))]
+    air, y, whoosh = noise(n, rng), 0.0, []
+    for i, a in enumerate(air):
+        t = i / n
+        y += (0.03 + 0.25 * math.sin(math.pi * t) ** 2) * (a - y)
+        whoosh.append(y * math.sin(math.pi * t) ** 1.5)
+    write("crab_throw.wav", mix(clack(n, 0.0, 0.6, 1600), highpass(whoosh, 0.02), [f * 0.6 for f in flare]), 0.65)
+
+    # Hurt: a knock on a hollow pumpkin, a crack and a squawk of a cackle.
+    n = int(0.35 * RATE)
+    knock = [s * e for s, e in zip(tone(n, 150, 0.07, 0.0005, (1.0, 0.6, 0.3, 0.15)), env(n, 0.0005, 0.07))]
+    write("crab_hurt.wav", mix(knock, clack(n, 0.005, 0.6, 900), [0.0] * int(0.04 * RATE) + cackle(n, 2, 620, 520, 0.5)), 0.75)
+
+    # Death: the pumpkin shell bursting, a last falling cackle and the flame guttering out.
+    n = int(1.6 * RATE)
+    burst = [s * e for s, e in zip(lowpass(noise(n, rng), 0.3), env(n, 0.002, 0.1))]
+    pieces = mix(*[clack(n, rng.uniform(0.15, 1.2), rng.uniform(0.2, 0.5), rng.uniform(700, 1400)) for _ in range(12)])
+    gutter = [c * math.exp(-i / (0.4 * RATE)) * 0.6 for i, c in enumerate(crackle(n, lambda t: 80 - 70 * t))]
+    write("crab_die.wav", mix(burst, [s * 0.7 for s in sweep_thump(n, 120, 45, 0.05, 0.2)], pieces, gutter,
+                              [0.0] * int(0.2 * RATE) + cackle(n, 5, 480, 220, 0.6)), 0.85)
+
+    # Step: a pointed foot tapping down, a tiny hollow tick.
+    n = int(0.05 * RATE)
+    write("crab_step.wav", mix([s * e for s, e in zip(highpass(noise(n, rng), 0.3), env(n, 0.0005, 0.005))],
+                               clack(n, 0.0, 0.3, 2200)), 0.45)
+
+
 def generate():
     os.makedirs(OUT, exist_ok=True)
     for i in range(5):
@@ -679,6 +778,7 @@ def generate():
     spider_sounds(random.Random(29))
     cat_sounds(random.Random(37))
     treant_sounds(random.Random(41))
+    crab_sounds(random.Random(43))
 
     for name in ("slide_loop.wav", "wind_loop.wav", "surf_loop.wav", "portal_hum.wav", "golem_hum.wav", "shield_hum.wav"):
         path = os.path.join(OUT, name + ".import")

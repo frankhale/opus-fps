@@ -8,7 +8,7 @@ extends SceneTree
 ##                     and the portal (set its exit or level, and title, in the Inspector)
 ##   prefabs/terrain/  the terrain tiles, cliffs and mountains
 ##   prefabs/pickups/  weapons, ammo, health, gems and the invulnerability powerup
-##   prefabs/enemies/  floating eye, golem, spider and shadow cat
+##   prefabs/enemies/  floating eye, golem, spider, shadow cat, treant and pumpkin crab
 ##   prefabs/creatures/ the harmless island creatures: lynx ranger, dachshund, arcane eye,
 ##                     jellyfish and lovebird
 ## Enemies and creatures build their model when the game runs, so each carries an
@@ -76,6 +76,8 @@ const ACTORS := {
 	"golem": ["enemies", "res://scripts/enemies/golem.gd", 1.15, true],
 	"spider": ["enemies", "res://scripts/enemies/spider.gd", 1.25, true],
 	"shadow_cat": ["enemies", "res://scripts/enemies/shadow_cat.gd", 1.0, true],
+	"treant": ["enemies", "res://scripts/enemies/treant.gd", 1.15, true],
+	"pumpkin_crab": ["enemies", "res://scripts/enemies/pumpkin_crab.gd", 1.0, true],
 	"lynx_ranger": ["creatures", "res://scripts/enemies/lynx_ranger.gd", 1.0, true],
 	"dachshund": ["creatures", "res://scripts/enemies/dachshund.gd", 1.0, true],
 	"arcane_eye": ["creatures", "res://scripts/enemies/arcane_eye.gd", 1.3, true],

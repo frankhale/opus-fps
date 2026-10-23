@@ -22,8 +22,9 @@ extends Node3D
 ## them), trees, bushes and grass under Props; the ruins of an overgrown gateway among
 ## broken walls and columns under Ruins (move the group to move the whole site); the
 ## creatures (the shadow cat roams the island, the lynx ranger and a dachshund potter
-## about on it, the arcane eye and a jellyfish float over it, and a pair of lovebirds
-## fly about over it, perching on things); and PlayerStart, where
+## about on it, the arcane eye and a jellyfish float over it, a pair of lovebirds
+## fly about over it, perching on things, and a pumpkin crab scuttles about the beach
+## along from where the player starts); and PlayerStart, where
 ## the player starts and comes back after dying. They're instances of the prefab library
 ## (res://prefabs/), so the creatures show their models in the editor. The ground is
 ## levelled round wherever Ruins stands, and the group settles onto that level; after
@@ -75,6 +76,10 @@ const RUIN_BLEND := 14.0
 const CAT_SHORE := 3.0
 const LYNX_SHORE := 4.0
 const DOG_SHORE := 3.0
+## The pumpkin crab keeps to the beach: this far from the water, and no farther inland
+## than CRAB_INLAND (unless it's chasing the player).
+const CRAB_SHORE := 1.5
+const CRAB_INLAND := 14.0
 const JELLY_OFFSHORE := 6.0
 
 ## Inspector button: rebuilds the ground (and so re-levels it round the ruins).
@@ -299,6 +304,10 @@ func _keep_on_island(creature: Node) -> void:
 		creature.can_hover = func(p: Vector3) -> bool: return inland(p.x, p.z) > -JELLY_OFFSHORE
 	elif creature is ArcaneEye or creature is Lovebird:
 		creature.can_hover = func(p: Vector3) -> bool: return inland(p.x, p.z) > 0.0
+	elif creature is PumpkinCrab:
+		creature.can_stand = func(p: Vector3) -> bool:
+			var s := inland(p.x, p.z)
+			return s > CRAB_SHORE and (s < CRAB_INLAND or creature.alerted)
 	else:
 		var shore := LYNX_SHORE if creature is LynxRanger else DOG_SHORE if creature is Dachshund else CAT_SHORE
 		creature.can_stand = func(p: Vector3) -> bool: return inland(p.x, p.z) > shore
