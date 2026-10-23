@@ -6,7 +6,8 @@ extends Node3D
 ## The island is about 85 m across with a ragged, noisy coastline. A sandy beach 10 m wide
 ## rises gently from the water to grassy hills up to about 4 m high in the middle. Under
 ## the water the sand shelves away, gently through the shallows and then steeply down to
-## about 9 m, so the sea turns from turquoise to deep blue a little way out.
+## about 9 m. The water is a tropical lagoon's: pale aqua over the sand near the shore,
+## clear turquoise farther out and a deep sapphire past the drop-off.
 ## The ground is one mesh built here from height(), painted like the main level's terrain
 ## (scripts/terrain.gd): the pack's palette material, dimmed the same, with each face
 ## mapped onto one swatch as the tiles are: sand on the beach and under the water,
@@ -267,6 +268,17 @@ func _build_sea() -> void:
 	var mat := ShaderMaterial.new()
 	mat.shader = SEA_SHADER
 	mat.render_priority = 1  # after the other see-through things, like the creek
+	# The sea bed's height over the ground mesh's grid: the shader's water depth and
+	# waterline come from it, steady where the snapping ground would make them flicker.
+	var n := int(GROUND_HALF * 2.0 / GROUND_STEP) + 1
+	var img := Image.create(n, n, false, Image.FORMAT_RF)
+	for j in n:
+		for i in n:
+			img.set_pixel(i, j, Color(height(-GROUND_HALF + i * GROUND_STEP, -GROUND_HALF + j * GROUND_STEP), 0.0, 0.0))
+	mat.set_shader_parameter("bed_map", ImageTexture.create_from_image(img))
+	mat.set_shader_parameter("bed_origin", Vector2(-GROUND_HALF, -GROUND_HALF))
+	mat.set_shader_parameter("bed_step", GROUND_STEP)
+	mat.set_shader_parameter("bed_floor", SEA_BED)
 	plane.material = mat
 	var sea := MeshInstance3D.new()
 	sea.name = "Sea"

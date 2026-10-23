@@ -2,28 +2,53 @@
 // (materials/water.gdshader) but for still water with waves rolling in to shore.
 //  * ripples in two layers drifting across each other in world space, posterized into
 //    flat color steps with pale crests
-//  * see-through: the sand shows through the shallows, wobbling with the ripples, and
-//    the sea darkens from turquoise to deep blue with the water's real (vertical) depth
+//  * see-through, like a tropical lagoon: over the sandy shallows the bed shows through
+//    pale and bright, tinted aqua; farther out it turns clear turquoise, and past the
+//    drop-off a rich sapphire blue, by the water's real (vertical) depth
 //  * surf: bands of foam roll in through the shallows toward the shore and break into a
-//    white line at the water's edge and around rocks, read from the depth buffer
+//    white line at the water's edge and around rocks
+// Everything is worked out per pixel so the water stays put as you move, where the PS1
+// vertex snapping makes the sea's huge faces and the beach under it jump about:
+//  * the point on the surface is where the camera's ray through the pixel meets it, not
+//    the (snapped) face's
+//  * the water's depth comes from bed_map, the sea bed's true height (the level builds
+//    it: scripts/island.gd), not the low-res depth buffer
+//  * where the water meets the beach comes from bed_map too: the sea draws without a
+//    depth test and hides itself only behind things truly in front of it (dry land and
+//    whatever stands on it or in the water), so the snapping beach can't push the
+//    waterline about. The depth buffer still adds the foam line round rocks.
 shader_type spatial;
-render_mode unshaded, cull_disabled, depth_draw_never, shadows_disabled;
+render_mode unshaded, cull_disabled, depth_draw_never, depth_test_disabled, shadows_disabled;
 
 uniform sampler2D screen_tex : hint_screen_texture, filter_nearest, repeat_disable;
 uniform sampler2D depth_tex : hint_depth_texture, filter_nearest, repeat_disable;
-uniform vec3 shallow_color : source_color = vec3(0.26, 0.56, 0.54);
-uniform vec3 deep_color : source_color = vec3(0.05, 0.16, 0.26);
-uniform vec3 crest_color : source_color = vec3(0.6, 0.8, 0.82);
+// The sea bed's height (m, in red), one texel per bed_step meters with the first texel's
+// center at bed_origin (x, z); past its edges the bed is at bed_floor.
+uniform sampler2D bed_map : filter_linear, repeat_disable;
+uniform vec2 bed_origin = vec2(0.0);
+uniform float bed_step = 1.0;
+uniform float bed_floor = -9.0;
+// The pale aqua over the sand, the turquoise of the deeper shallows, and the open sea.
+uniform vec3 lagoon_color : source_color = vec3(0.56, 0.9, 0.84);
+uniform vec3 shallow_color : source_color = vec3(0.1, 0.7, 0.76);
+uniform vec3 deep_color : source_color = vec3(0.04, 0.33, 0.52);
+uniform vec3 crest_color : source_color = vec3(0.78, 0.96, 0.95);
 uniform vec3 foam_color : source_color = vec3(0.88, 0.92, 0.92);
 // Drift of the two ripple layers, meters per second.
 uniform vec2 drift_a = vec2(0.35, 0.18);
 uniform vec2 drift_b = vec2(-0.22, 0.4);
 // Ripple size: noise cells per meter.
 uniform float ripple_scale = 0.45;
-// Water depth (m, straight down) at which the sea bed has faded to deep_color.
-uniform float murk_depth = 2.4;
+// Water depth (m, straight down) by which the pale lagoon has turned turquoise, and the
+// depths over which the turquoise deepens to deep_color.
+uniform float lagoon_depth = 1.2;
+uniform vec2 deep_depths = vec2(3.0, 9.0);
+// The sand seen through the shallows is brightened and tinted by this, as sunlit sand
+// under clear water looks.
+uniform vec3 bed_tint : source_color = vec3(1.1, 1.3, 1.25);
+uniform float bed_lift = 0.1;
 // Least opacity, so even the shallowest water reads as water.
-uniform float min_opacity : hint_range(0.0, 1.0) = 0.25;
+uniform float min_opacity : hint_range(0.0, 1.0) = 0.3;
 // Screen-space wobble of the bed seen through the water.
 uniform float refraction = 0.01;
 // Water within this depth (m) of the bed or a rock turns to foam: the line at the edge.
@@ -36,12 +61,10 @@ uniform float surf_speed = 0.16;
 uniform float surf_thickness : hint_range(0.0, 1.0) = 0.3;
 // Brightness steps for the ripples; 0 = smooth.
 uniform float posterize = 4.0;
-uniform float snap_scale : hint_range(0.0, 1.0) = 1.0;
-
-varying vec3 world_pos;
+// Snapping of the sea's own faces. Off: only where it meets the sky would show it.
+uniform float snap_scale : hint_range(0.0, 1.0) = 0.0;
 
 void vertex() {
-	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	vec4 clip = PROJECTION_MATRIX * (MODELVIEW_MATRIX * vec4(VERTEX, 1.0));
 	if (snap_scale > 0.0 && PROJECTION_MATRIX[3][3] < 0.5) {
 		vec2 grid = VIEWPORT_SIZE * 0.5 * snap_scale;
@@ -69,8 +92,40 @@ vec3 scene_pos(vec2 uv, mat4 inv_proj, mat4 inv_view) {
 	return (inv_view * vec4(v.xyz / v.w, 1.0)).xyz;
 }
 
+// The sea bed's height at (x, z).
+float bed_height(vec2 xz) {
+	vec2 size = vec2(textureSize(bed_map, 0));
+	vec2 t = (xz - bed_origin) / bed_step + 0.5;
+	bool inside = all(greaterThanEqual(t, vec2(0.0))) && all(lessThanEqual(t, size));
+	return inside ? texture(bed_map, t / size).r : bed_floor;
+}
+
 void fragment() {
-	vec2 p = world_pos.xz * ripple_scale;
+	// This pixel's point on the surface: where the camera's ray through it meets the sea.
+	vec4 ray = INV_PROJECTION_MATRIX * vec4(SCREEN_UV * 2.0 - 1.0, 0.5, 1.0);
+	vec3 dir = normalize(mat3(INV_VIEW_MATRIX) * (ray.xyz / ray.w));
+	float level = MODEL_MATRIX[3].y;
+	vec3 cam = CAMERA_POSITION_WORLD;
+	if ((level - cam.y) * dir.y <= 0.0) {
+		discard;  // the ray doesn't reach the surface (the sky past the horizon)
+	}
+	vec3 wp = cam + dir * ((level - cam.y) / dir.y);
+	float surface = -(VIEW_MATRIX * vec4(wp, 1.0)).z;
+	float sea_depth = level - bed_height(wp.xz);
+	if (sea_depth <= 0.0) {
+		discard;  // dry land
+	}
+	// Hidden behind anything in front of it, except sea bed (sand under the water, which
+	// can only seem to be in front where its faces snap).
+	vec3 front = scene_pos(SCREEN_UV, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX);
+	if (-(VIEW_MATRIX * vec4(front, 1.0)).z < surface - 0.02) {
+		float under = bed_height(front.xz);
+		if (!(under < level + 0.05 && abs(front.y - under) < 0.3)) {
+			discard;
+		}
+	}
+
+	vec2 p = wp.xz * ripple_scale;
 	float a = noise(p - drift_a * TIME * ripple_scale);
 	float b = noise(p * 1.9 + vec2(4.1, 7.3) - drift_b * TIME * ripple_scale * 1.9);
 	float ripple = a * 0.6 + b * 0.4;
@@ -78,7 +133,6 @@ void fragment() {
 		ripple = floor(ripple * posterize + 0.5) / posterize;
 	}
 
-	float surface = -VERTEX.z;
 	vec2 offset = (vec2(a, b) - 0.5) * refraction;
 	vec2 uv = SCREEN_UV + offset;
 	vec4 bv = INV_PROJECTION_MATRIX * vec4(uv * 2.0 - 1.0, texture(depth_tex, uv).r, 1.0);
@@ -86,16 +140,22 @@ void fragment() {
 		// The offset landed on something in front of the water: don't refract it.
 		uv = SCREEN_UV;
 	}
+	// How far down the bed is, and (looking in at a low angle) how much water you see through.
+	float depth = sea_depth;
+	float through = depth / max(abs(dir.y), 0.05);
+	// Something drawn well above the bed (a rock) gets its foam line from the depth buffer.
 	vec3 bed = scene_pos(uv, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX);
-	float depth = max(world_pos.y - bed.y, 0.0);  // straight down to the bed
-	// Looking in at a low angle you see through more water than its depth.
-	float through = max(distance(bed, world_pos), depth);
+	float drawn_depth = max(wp.y - bed.y, 0.0);
+	float edge_depth = drawn_depth < sea_depth - 0.15 ? drawn_depth : sea_depth;
 
-	float murk = clamp(max(depth / murk_depth, through / (murk_depth * 6.0)), 0.0, 1.0);
-	vec3 water = mix(shallow_color, deep_color, sqrt(murk));
+	float seen = max(depth, through / 10.0);
+	float lagoon = smoothstep(0.0, lagoon_depth, seen);
+	float deep = smoothstep(deep_depths.x, deep_depths.y, seen);
+	vec3 water = mix(mix(lagoon_color, shallow_color, lagoon), deep_color, deep);
 	water = mix(water, crest_color, smoothstep(0.62, 0.8, ripple) * 0.6);
-	float opacity = mix(min_opacity, 0.94, murk);
-	vec3 col = mix(texture(screen_tex, uv).rgb, water, opacity);
+	float opacity = mix(min_opacity, 0.96, clamp(lagoon * 0.5 + deep * 0.5, 0.0, 1.0));
+	vec3 bed_col = texture(screen_tex, uv).rgb * bed_tint + bed_lift;
+	vec3 col = mix(bed_col, water, opacity);
 
 	// Surf rolling in: bands that move from surf_reach deep toward the edge, thickest
 	// near the shore, broken up by the ripples.
@@ -103,7 +163,7 @@ void fragment() {
 	float band = fract(depth / surf_spacing + TIME * surf_speed);
 	float surf = step(band, surf_thickness * shallow * (0.4 + ripple)) * step(0.001, shallow);
 	// The line where it breaks on the sand and around rocks.
-	float edge = 1.0 - smoothstep(0.0, foam_width * (0.6 + ripple), depth);
+	float edge = 1.0 - smoothstep(0.0, foam_width * (0.6 + ripple), edge_depth);
 	col = mix(col, foam_color, max(surf * 0.75, step(0.5, edge)));
 	ALBEDO = col;
 }
