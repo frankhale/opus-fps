@@ -5,10 +5,11 @@ extends CharacterBody3D
 ## it, then hunts them. It gives up once the player gets `deaggro_range` away (a shot
 ## from farther keeps it after them for `memory` seconds), stays out of sight for
 ## `memory` seconds, or it strays `leash` from home, and drifts back. Shots flash it
-## and knock it back; when killed it hides its model, drops loot (ammo for the player's
+## and knock it back, and show a health bar over it (EnemyHealthBar) that fades a few
+## seconds after the last hit; when killed it hides its model, drops loot (ammo for the player's
 ## weapons or health, and gems) and respawns at home a while later, out of the player's sight.
-## A subclass builds its own body in _ready() (calling _setup() for the model, sounds
-## and hit flash), moves and attacks in _physics_process(), and can hook into the
+## A subclass builds its own body in _ready() (calling _setup() for the model, sounds,
+## hit flash and health bar), moves and attacks in _physics_process(), and can hook into the
 ## events below (_on_alert, _on_lost_sight, _on_death, _on_respawn).
 
 const LOOT_HEALTH_MODEL := preload("res://assets/pickups/pickup_health_vial.glb")
@@ -29,6 +30,8 @@ const ENEMY_VISUAL_LAYER := 4
 const RING_COLOR := Color(0.4, 0.02, 0.02)
 ## Height of the ring's decal box, centered on the ground under the enemy.
 const RING_DEPTH := 4.0
+## Gap between the top of its model and its health bar (m).
+const BAR_GAP := 0.35
 
 @export var max_health := 80.0
 ## It notices the player within this many meters (across the ground) if it can see them.
@@ -70,6 +73,7 @@ var _t := 0.0
 var _audio: AudioStreamPlayer3D
 var _sounds: Dictionary
 var _ring: Decal
+var _bar: EnemyHealthBar
 
 static var _ring_texture: Texture2D
 ## Whether enemies notice the player at all (the console's `aggro`). Off, they don't
@@ -111,6 +115,16 @@ func _setup(model: PackedScene, sounds: Dictionary) -> void:
 	_ring.lower_fade = 0.5
 	_ring.top_level = true
 	add_child(_ring)
+
+	# The health bar, just over the top of the model.
+	var top := -INF
+	var to_self := global_transform.affine_inverse()
+	for g in _meshes:
+		var box: AABB = (to_self * g.global_transform) * g.get_aabb()
+		top = maxf(top, box.end.y)
+	_bar = EnemyHealthBar.new()
+	_bar.position.y = (top if top > -INF else 1.5) + BAR_GAP
+	add_child(_bar)
 
 	_home = global_position
 	health = max_health
@@ -229,6 +243,7 @@ func take_damage(amount: float, _at := Vector3.ZERO, dir := Vector3.ZERO) -> voi
 	if dead:
 		return
 	health -= amount
+	_bar.set_health(health, max_health)
 	_flash_amount = 1.0
 	velocity += dir * clampf(amount * knockback, knockback * 6.0, knockback * 53.0)
 	if not alerted and aggro_enabled:
@@ -248,6 +263,7 @@ func _die() -> void:
 	collision_layer = 0
 	_model.visible = false
 	_ring.visible = false
+	_bar.reset()
 	_flash_amount = 0.0
 	_set_glow(Color.BLACK, 0.0)
 	_on_death()
