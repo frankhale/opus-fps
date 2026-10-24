@@ -67,6 +67,12 @@ PALETTE_VARIANTS = {
     "tree_fallen": {"dbark": "#3A2619", "wood": "#664430", "lwood": "#8C6442", "sand": "#B88A5A",
                     "lsand": "#CCA272", "orange": "#9A5630", "roof": "#5A2C1C", "lgrass": "#5F823A",
                     "toxic": "#78A044"},
+    # The rain fountain's polished brass ("brass", lit "yellow", shaded "orange"), bright
+    # turquoise glass and water ("cyan", "sky", "water"), white clouds and pearls, a cream
+    # column ("bone") and cool blue-grey stone.
+    "fountain_rain": {"brass": "#B07A2C", "yellow": "#D8A64C", "orange": "#6E4518", "cyan": "#3CB4CC",
+                      "sky": "#8CD8E6", "water": "#2490AC", "white": "#E6EAEC", "bone": "#D6CDBA",
+                      "stone": "#5C6068", "lstone": "#7E828A", "dstone": "#383B42"},
 }
 
 
@@ -4677,6 +4683,170 @@ def tree_fallen(b):
     for x, y in ((-0.3, -0.55), (0.6, -0.5), (0.2, 0.6), (-1.8, 0.3), (1.1, -0.75), (-0.4, 0.9)):
         a = b.rng.uniform(0, 2 * math.pi)
         leaf((x, y, 0.025), (math.cos(a), math.sin(a), 0.05), 0.13, 0.08, {"lgrass": 1, "grass": 1})
+
+
+@asset("scenery")
+def fountain_rain(b):
+    """A rain fountain, about 3.4 m across and 2.4 m tall: a brass-bound glass globe with
+    a raincloud inside, on a cream column ringed with brass, standing on a stone plinth in
+    a round pool. Three brass spouts pour water into the pool, and a fourth stream spills
+    over a low stone at the front of the basin wall. Little glass vials hang off the globe
+    on brass pipes, there's a porthole and a valve wheel, and pearls glow on the cap and
+    vials. Mossy stone blocks make the basin wall, with boulders, leaves and white flowers
+    round its foot. Faces facing -Y are its front. The glass, water and pearls glow."""
+    bm = b.bm
+    brass = {"brass": 3, "yellow": 1, "orange": 1}
+    stone = {"stone": 4, "lstone": 2, "dstone": 1}
+    glass = {"cyan": 5, "sky": 1}
+    G, R = Vector((0, 0, 1.68)), 0.55  # the globe
+
+    def leaf(base, direction, length, width, color):
+        """A pointed leaf, folded a little along its midrib, two-sided."""
+        d = Vector(direction).normalized()
+        side = d.cross(Vector((0, 0, 1)))
+        if side.length < 1e-3:
+            side = Vector((1, 0, 0))
+        side.normalize()
+        up = side.cross(d).normalized()
+        base = Vector(base)
+        mid = base + d * length * 0.45
+        tip = base + d * length - up * length * 0.12  # the tip droops
+        pts = [base, mid + side * width / 2 - up * width * 0.12, tip, mid - side * width / 2 - up * width * 0.12,
+               mid + up * width * 0.06]
+        for sgn in (1, -1):
+            vs = [bm.verts.new(b.P @ (q + up * 0.003 * sgn)) for q in pts]
+            for t in ((0, 1, 4), (4, 1, 2), (0, 4, 3), (4, 2, 3)):
+                f = bm.faces.new([vs[i] for i in (t if sgn > 0 else t[::-1])])
+                f[b.pal] = IDX[b._resolve(color, f)]
+
+    def sprout(at, count, length):
+        """A tuft of leaves fanning out and up from one spot."""
+        a0 = b.rng.uniform(0, 2 * math.pi)
+        for k in range(count):
+            a = a0 + 2 * math.pi * (k + b.rng.uniform(-0.25, 0.25)) / count
+            tilt = math.radians(b.rng.uniform(35, 80))
+            d = Vector((math.cos(a) * math.sin(tilt), math.sin(a) * math.sin(tilt), math.cos(tilt) - 0.1))
+            ln = length * b.rng.uniform(0.75, 1.15)
+            leaf(at, d, ln, ln * 0.6, {"lgrass": 2, "grass": 2, "toxic": 1})
+
+    def out(az, r, z):
+        a = math.radians(az)
+        return Vector((r * math.cos(a), r * math.sin(a), z))
+
+    # Boulders round the foot, then the basin wall of stone blocks with moss in the
+    # joints. The block at the front is lower: the pool spills over it.
+    for k in range(18):
+        az = 360 * k / 18 + b.rng.uniform(-5, 5)
+        v = b.sphere(0.22 * b.rng.uniform(0.85, 1.1), 7, 5, loc=out(az, 1.58, 0.1), scale=(1.0, 1.3, 0.75),
+                     rot=(0, 0, az), color=stone, jit=0.02)
+        b.paint(v, lambda f: {"olive": 1, "grass": 1} if f.normal.z > 0.8 and b.rng.random() < 0.3 else stone)
+    for k in range(16):
+        az = 360 * k / 16 - 90
+        top = 0.5 if k == 0 else 0.62
+        with b.at(rot=(0, 0, az)):
+            b.box((0.3, 0.55, top - 0.05), loc=(1.3, 0, 0.05 + (top - 0.05) / 2), jit=0.012,
+                  color=lambda f: "lstone" if f.normal.z > 0.8 else stone)
+        with b.at(rot=(0, 0, az + 360 / 32)):
+            b.box((0.32, 0.05, 0.5), loc=(1.3, 0, 0.32), color={"olive": 2, "grass": 1})
+
+    # The pool, and the stream spilling over the front of the wall.
+    rings = [[bm.verts.new(out(360 * k / 32, r, 0.52)) for k in range(32)] for r in (0.66, 1.2)]
+    for k in range(32):
+        k1 = (k + 1) % 32
+        bm.faces.new((rings[0][k], rings[1][k], rings[1][k1], rings[0][k1]))
+    b.paint(rings[0] + rings[1], {"cyan": 6, "sky": 1}, glow=True)
+    b.box((0.36, 0.3, 0.02), loc=(0, -1.3, 0.52), color={"sky": 2, "cyan": 1}, glow=True)
+    b.box((0.3, 0.03, 0.44), loc=(0, -1.46, 0.3), color={"sky": 2, "white": 1}, glow=True)
+    b.ico(0.12, 1, loc=(0, -1.55, 0.06), scale=(1.6, 1, 0.5), color={"white": 1, "sky": 1}, glow=True)
+
+    # The plinth, a brass foot ring studded with bolts, the cream column and the brass
+    # collar the globe sits in.
+    b.lathe([(0.68, 0.05), (0.68, 0.6), (0.62, 0.66)], seg=16,
+            color=lambda f: "lstone" if f.normal.z > 0.8 else stone, jit=0.01)
+    b.lathe([(0.52, 0.64), (0.52, 0.76), (0.46, 0.8)], seg=16, color=brass)
+    for k in range(12):
+        b.box((0.04, 0.04, 0.04), loc=out(30 * k + 15, 0.52, 0.7), rot=(0, 0, 30 * k + 15), color="yellow")
+    b.cyl(0.38, 0.38, 0.4, seg=10, loc=(0, 0, 1.0), color=lambda f: "white" if f.normal.z > 0.5 else "bone")
+    b.lathe([(0.4, 1.16), (0.5, 1.18), (0.5, 1.26), (0.42, 1.3)], seg=16, color=brass)
+    for k in range(8):
+        b.box((0.035, 0.035, 0.035), loc=out(45 * k, 0.5, 1.22), rot=(0, 0, 45 * k), color="yellow")
+
+    # The globe: turquoise glass with a raincloud inside, seen through it as a band of
+    # puffy white with streaks of rain falling from it.
+    def globe(f):
+        d = (f.calc_center_median() - G).normalized()
+        a = math.atan2(d.y, d.x)
+        puff = 0.32 * abs(math.sin(a * 2)) ** 0.7 + 0.1 * abs(math.sin(a * 6))
+        if -0.02 < d.z < puff - 0.08:
+            return "white"  # clouds: a row of puffs with clear glass between them
+        if -0.55 < d.z < -0.06 and puff > 0.2 and int((a + math.pi) * 9) % 3 == 0:
+            return "sky"  # rain
+        if d.z > 0.45 and d.x < -0.2:
+            return "sky"  # a glint
+        return "cyan"
+    b.paint(b.sphere(R, 20, 14, loc=G), globe, glow=True)
+    for az in (0, 90):  # brass straps over the top
+        b.ring(R + 0.02, 0.045, seg=20, width=0.07, loc=G, rot=(90, 0, az), color=brass)
+    b.ring(R * 0.92, 0.05, seg=20, width=0.06, loc=G - Vector((0, 0, 0.2)), color=brass)
+    # The cap, with a pearl on top.
+    b.lathe([(0.32, 2.12), (0.32, 2.18), (0.22, 2.24), (0.13, 2.27), (0.13, 2.32), (0.0, 2.33)], seg=14,
+            color=brass)
+    for k in range(10):
+        b.box((0.035, 0.035, 0.035), loc=out(36 * k, 0.3, 2.19), rot=(0, 0, 36 * k), color="yellow")
+    b.ico(0.075, 1, loc=(0, 0, 2.39), color="white", glow=True)
+
+    # A porthole on the globe's front-left, and a valve wheel on the column below it.
+    d = out(-125, 1, -0.2).normalized()
+    p = G + d * (R - 0.02)
+    b.limb(p, p + d * 0.12, 0.12, 0.12, 10, brass)
+    b.limb(p + d * 0.12, p + d * 0.13, 0.075, 0.075, 10, "black")
+    with b.at(rot=(0, 0, -60)):
+        b.limb((0.36, 0, 0.98), (0.5, 0, 0.98), 0.025, 0.025, 6, brass)
+        b.ring(0.1, 0.022, seg=10, loc=(0.5, 0, 0.98), rot=(0, 90, 0), color=brass)
+        b.box((0.02, 0.2, 0.025), loc=(0.5, 0, 0.98), color=brass)
+        b.box((0.02, 0.025, 0.2), loc=(0.5, 0, 0.98), color=brass)
+    with b.at(rot=(0, 0, -20)):
+        b.box((0.1, 0.18, 0.16), loc=(0.39, 0, 0.98), color=brass)  # a little brass box
+
+    # Glass vials on brass pipes, each fed from the globe and draining into the column.
+    for az, h in ((10, 1.95), (150, 1.9), (215, 1.55)):
+        with b.at(rot=(0, 0, az)):
+            x = 0.78
+            vz = h - 0.38
+            b.limb((R - 0.05, 0, h), (x, 0, h), 0.045, 0.045, 6, brass)
+            b.ico(0.06, 1, loc=(x, 0, h), color=brass)
+            b.limb((x, 0, h), (x, 0, vz + 0.24), 0.045, 0.045, 6, brass)
+            b.cyl(0.08, 0.1, 0.06, seg=10, loc=(x, 0, vz + 0.2), color=brass)
+            b.sphere(0.13, 10, 8, loc=(x, 0, vz), scale=(1, 1, 1.3), color=glass, glow=True)
+            b.cyl(0.1, 0.07, 0.06, seg=10, loc=(x, 0, vz - 0.19), color=brass)
+            b.ico(0.045, 1, loc=(x, 0, vz + 0.26), color="white", glow=True)
+            b.limb((x, 0, vz - 0.2), (x, 0, 1.05), 0.04, 0.04, 6, brass)
+            b.ico(0.055, 1, loc=(x, 0, 1.05), color=brass)
+            b.limb((x, 0, 1.05), (0.36, 0, 1.0), 0.04, 0.04, 6, brass)
+
+    # Three spouts pouring into the pool.
+    for az in (-90, -160, -20):
+        with b.at(rot=(0, 0, az)):
+            b.limb((0.34, 0, 0.88), (0.68, 0, 0.88), 0.075, 0.075, 8, brass)
+            b.limb((0.64, 0, 0.88), (0.72, 0, 0.88), 0.11, 0.1, 8, brass)
+            b.limb((0.72, 0, 0.88), (0.73, 0, 0.88), 0.065, 0.065, 8, "black")
+            b.tube([(0.72, 0, 0.86), (0.8, 0, 0.83), (0.86, 0, 0.74), (0.89, 0, 0.62), (0.9, 0, 0.51)],
+                   [0.055, 0.06, 0.06, 0.065, 0.07], seg=6, color={"sky": 2, "white": 1, "cyan": 1}, glow=True)
+            b.ico(0.09, 1, loc=(0.9, 0, 0.52), scale=(1.4, 1.4, 0.4), color={"white": 1, "sky": 1}, glow=True)
+
+    # Leaves and white flowers among the boulders and along the wall.
+    for k in range(14):
+        az = 360 * k / 14 + b.rng.uniform(-8, 8)
+        if abs((az + 90 + 180) % 360 - 180) < 12:
+            continue  # leave the spill clear
+        sprout(out(az, b.rng.uniform(1.45, 1.75), b.rng.uniform(0.18, 0.32)), b.rng.randint(4, 6), 0.2)
+        if k % 2:
+            fp = out(az + 4, 1.62, 0.36)
+            for j in range(4):
+                b.box((0.06, 0.025, 0.01), loc=fp, rot=(0, -15, 45 * j + az), color="white")
+            b.ico(0.02, 1, loc=fp + Vector((0, 0, 0.01)), color="yellow")
+    for az in (40, 130, 250, 320):  # moss on the plinth
+        sprout(out(az, 0.66, 0.6), 3, 0.12)
 
 
 # ---------------------------------------------------------------------------
