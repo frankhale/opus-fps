@@ -4,7 +4,8 @@
 //  * no vertex snapping, so the blades hold still instead of shimmering as you move
 //  * each blade fades up from the ground's own green at its root to its palette color,
 //    so clumps sink into the ground instead of standing on it, and its colors are
-//    softened toward that green so bright tips don't speckle
+//    softened toward that green so bright tips don't speckle, then made more vivid
+//    (saturation) so the meadow reads a lush green
 //  * lit as if it faced straight up, like the ground under it, so a blade's two sides
 //    don't flip between light and dark
 //  * the tips thin out in a fine dither instead of ending in a hard point
@@ -21,6 +22,9 @@ uniform vec3 ground_color = vec3(0.027, 0.048, 0.022);
 uniform float blade_height = 0.36;
 // How far a blade's color is pulled toward the ground's green (0 = its own color).
 uniform float soften : hint_range(0.0, 1.0) = 0.35;
+// How vivid a blade's color is (1 = as the palette has it). Its root still fades to the
+// ground's own green, so it meets the ground without a seam.
+uniform float saturation : hint_range(0.0, 3.0) = 1.4;
 // The share of a blade's height, from the top, that thins out to its tip.
 uniform float tip_fade : hint_range(0.0, 1.0) = 0.3;
 uniform float fade_start = 25.0;
@@ -39,6 +43,7 @@ void vertex() {
 void fragment() {
 	vec3 blade = texture(palette, UV).rgb;
 	vec3 c = mix(blade, ground_color, soften);
+	c = max(mix(vec3(dot(c, vec3(0.2126, 0.7152, 0.0722))), c, saturation), 0.0);
 	ALBEDO = mix(ground_color, c, smoothstep(0.0, 0.6, rise));
 	ROUGHNESS = 1.0;
 	ALPHA = 1.0 - smoothstep(1.0 - tip_fade, 1.0, rise) * 0.85;
