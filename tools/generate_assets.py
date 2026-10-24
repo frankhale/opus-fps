@@ -4306,6 +4306,191 @@ def rock_mossy_pile(b):
         sprout(at, n, ln, spread=(45, 85), droop=0.15)
 
 
+@asset("enemies")
+def enemy_bat(b):
+    """A chibi bat, faces -Y, about 1.3 m across its spread wings and 0.85 m tall from its
+    ear tips to its toes, with its origin at the middle of its body (hover it in game). It's
+    nearly all head: a big round ball of dark indigo fur, tufted at the cheeks and crown,
+    with two huge orange eyes (PS1_Glow) with glossy black pupils and a glint, a pink pug
+    snout with two little white fangs under it, and tall pointed ears lined with salmon
+    pink. Its small furry body hangs under the head with a ruff on its chest and two
+    little clawed feet. The wings are spread level and a little raised: a bony arm from
+    each shoulder to the wrist, with a claw for a thumb, and three long fingers fanning out
+    from the wrist with a dark membrane stretched between them, scalloped between the
+    finger tips and running back to the body's side.
+
+    Rigged for a flying animation (rest pose as modeled, wings spread). Sides are its own:
+    l is +X.
+      body (root) > head > ear_<side>
+      body > wing_<side>_0 (shoulder to elbow) > wing_<side>_1 (to the wrist)
+           > finger_<side>_<k> (wrist to finger tip, k = 0 the top one to 2 the lowest)
+      body > leg_<side> (hip to toes)
+    The membrane and every other part are skinned to the bones nearest them, blending
+    between neighbours, so the wings fold and flap smoothly."""
+    fur = "dwater"
+    skin = "dwater"  # the wing membrane
+    bone_c = "purple"  # the arms and fingers, ridging the membrane
+    sides = {"l": 1, "r": -1}
+    H = Vector((0, -0.02, 0.25))  # the head's center
+    HR = 0.2
+
+    def X(p, s):
+        return Vector((p[0] * s, p[1], p[2]))
+
+    shoulder, elbow, wrist = Vector((0.1, 0.0, 0.05)), Vector((0.27, 0.03, 0.1)), Vector((0.42, 0.03, 0.15))
+    tips = [Vector((0.66, 0.05, 0.22)), Vector((0.63, 0.06, -0.02)), Vector((0.5, 0.06, -0.17))]
+    attach = Vector((0.09, 0.03, -0.1))  # where the membrane meets the body's side
+
+    # Skeleton (before any geometry: adding the weight layer invalidates vertices).
+    b.bone("body", (0, 0, -0.12), (0, 0, 0.06))
+    b.bone("head", (0, 0, 0.06), (0, 0, 0.42), "body")
+    for side, s in sides.items():
+        b.bone(f"ear_{side}", X((0.11, 0.0, 0.38), s), X((0.25, 0.02, 0.64), s), "head")
+        b.bone(f"wing_{side}_0", X(shoulder, s), X(elbow, s), "body")
+        b.bone(f"wing_{side}_1", X(elbow, s), X(wrist, s), f"wing_{side}_0")
+        for k, tip in enumerate(tips):
+            b.bone(f"finger_{side}_{k}", X(wrist, s), X(tip, s), f"wing_{side}_1")
+        b.bone(f"leg_{side}", X((0.05, 0.0, -0.12), s), X((0.06, 0.0, -0.22), s), "body")
+
+    def mark():
+        return len(b.bm.verts)
+
+    def since(m):
+        return [v for v in list(b.bm.verts)[m:] if v.is_valid]
+
+    def skin_near(m, names):
+        """Skins the vertices made since mark() returned m to the nearest of the named
+        bones, blending between the two nearest."""
+        segs = [(n, h, t) for n, h, t, _ in b.bones if n in names]
+        for v in since(m):
+            ds = []
+            for n, h, t, in segs:
+                d = t - h
+                k = min(max((v.co - h).dot(d) / d.length_squared, 0.0), 1.0)
+                ds.append(((v.co - (h + d * k)).length, n))
+            ds.sort()
+            (d0, n0), (d1, n1) = ds[0], ds[1]
+            w0, w1 = 1.0 / (d0 + 0.01) ** 3, 1.0 / (d1 + 0.01) ** 3
+            share = w1 / (w0 + w1)
+            if share < 0.08:
+                b.weigh([v], {n0: 1.0})
+            else:
+                b.weigh([v], {n0: 1.0 - share, n1: share})
+
+    def flatten(verts, center, axis, k):
+        """Squashes verts toward `center` along `axis` by k."""
+        axis = Vector(axis).normalized()
+        for v in verts:
+            d = (v.co - center).dot(axis)
+            v.co -= axis * d * (1.0 - k)
+
+    def tuft(p, out, length, width, color=fur):
+        """A pointed tuft of fur from p, sticking out along `out`."""
+        out = Vector(out).normalized()
+        return b.limb(p - out * 0.02, Vector(p) + out * length, width, 0.0, seg=4, color=color)
+
+    # Head: a big round ball of fur, a little wider than tall, tufted at the cheeks and crown.
+    m = mark()
+    b.ico(1, 2, loc=H, scale=(HR * 1.08, HR, HR * 0.95), color=fur)
+    for side, s in sides.items():
+        for a, z, ln in ((-60, 0.0, 0.07), (-40, -0.08, 0.06), (-75, 0.08, 0.06), (-20, -0.13, 0.05),
+                         (-95, 0.03, 0.06), (-110, -0.06, 0.05)):
+            d = Vector((math.cos(math.radians(a)) * s, math.sin(math.radians(a)), z))
+            d.normalize()
+            p = H + Vector((d.x * HR * 1.05, d.y * HR, d.z * HR * 0.95))
+            tuft(p, d + Vector((0, 0.3, -0.25)), ln, 0.03)
+    for x, ln in ((-0.03, 0.06), (0.02, 0.08), (0.06, 0.05)):  # crown
+        tuft(H + Vector((x, 0.02, HR * 0.93)), (x * 3, 0.2, 1), ln, 0.025)
+
+    # Eyes: huge orange irises ringed in dark, glossy black pupils with a white glint.
+    for side, s in sides.items():
+        e = H + Vector((0.085 * s, -0.16, 0.01))
+        out = Vector((0.35 * s, -1, 0.05)).normalized()
+        b.limb(e - out * 0.03, e + out * 0.012, 0.08, 0.078, seg=12, color="black")
+        b.limb(e - out * 0.02, e + out * 0.02, 0.073, 0.07, seg=12, color="orange", glow=True)
+        b.ico(0.043, 2, loc=e + out * 0.024, scale=(1, 0.55, 1), rot=(0, 0, math.degrees(math.atan2(out.x, -out.y))),
+              color="black")
+        b.ico(0.012, 1, loc=e + out * 0.05 + Vector((-0.015 * s, 0, 0.022)), color="white", glow=True)
+
+    # Snout: a pink pug nose with two nostrils, and two little fangs under it.
+    n = H + Vector((0, -0.195, -0.055))
+    b.ico(0.04, 2, loc=n, scale=(1.25, 0.75, 0.85), color="flesh")
+    for s in (1, -1):
+        b.ico(0.01, 1, loc=n + Vector((0.016 * s, -0.03, 0.002)), color="black")
+        b.limb(n + Vector((0.022 * s, -0.012, -0.03)), n + Vector((0.024 * s, -0.016, -0.075)), 0.009, 0.0,
+               seg=4, color="white")
+
+    # Ears: tall, pointed and a little cupped, dark behind and salmon pink inside.
+    ear_m = {}
+    for side, s in sides.items():
+        base, tip = X((0.11, 0.0, 0.38), s), X((0.25, 0.02, 0.64), s)
+        em = mark()
+        out = Vector((0.2 * s, -1, 0)).normalized()
+        v = b.limb(base - (tip - base) * 0.15, tip, 0.13, 0.0, seg=6, color=fur)
+        flatten(v, base, out, 0.4)
+        v = b.limb(base - (tip - base) * 0.02 + out * 0.04, tip - (tip - base) * 0.12 + out * 0.02, 0.095, 0.0,
+                   seg=6, color={"flesh": 3, "red": 1})
+        flatten(v, base + out * 0.04, out, 0.25)
+        ear_m[side] = em
+    skin_near(m, ["head", "ear_l", "ear_r"])
+
+    # Body: small and furry, hanging under the head, with a ruff of fur on its chest.
+    m = mark()
+    b.ico(1, 2, loc=(0, 0.02, -0.04), scale=(0.12, 0.11, 0.14), color=fur)
+    for x, z, ln in ((0, -0.02, 0.06), (-0.04, -0.06, 0.05), (0.04, -0.06, 0.05), (-0.02, -0.11, 0.04),
+                     (0.03, -0.11, 0.04), (0.06, 0.0, 0.05), (-0.06, 0.0, 0.05)):
+        tuft(Vector((x, -0.08, z)), (x * 2, -0.6, -1), ln, 0.028)
+    skin_near(m, ["body", "head"])
+
+    # Feet: short furry legs, each ending in three little hooked claws.
+    for side, s in sides.items():
+        m = mark()
+        hip, foot = X((0.05, 0.02, -0.12), s), X((0.06, 0.01, -0.21), s)
+        b.limb(hip, foot, 0.04, 0.03, seg=6, color=fur)
+        b.ico(0.03, 1, loc=foot + Vector((0, -0.01, -0.01)), scale=(1.1, 1.2, 0.8), color=fur)
+        for k in (-1, 0, 1):
+            t = foot + Vector((0.014 * k, -0.03, -0.02))
+            b.limb(t, t + Vector((0.004 * k, -0.012, -0.022)), 0.007, 0.0, seg=4, color="white")
+        skin_near(m, ["body", f"leg_{side}"])
+
+    # Wings: a bony arm and three long fingers, and the membrane stretched between them.
+    bm = b.bm
+    for side, s in sides.items():
+        m = mark()
+        sh, el, wr = X(shoulder, s), X(elbow, s), X(wrist, s)
+        b.limb(sh, el, 0.03, 0.022, seg=5, color=fur)
+        b.limb(el, wr, 0.022, 0.016, seg=5, color=bone_c)
+        b.ico(0.02, 1, loc=wr, color=bone_c)
+        b.limb(wr, wr + Vector((0.02 * s, -0.02, 0.05)), 0.01, 0.0, seg=4, color="white")  # the thumb claw
+        ftips = [X(t, s) for t in tips]
+        for t in ftips:
+            b.limb(wr, t, 0.012, 0.004, seg=4, color=bone_c)
+        # The membrane's trailing edge: scalloped in toward the wrist between the finger tips,
+        # then curving back to the body's side.
+        att = X(attach, s)
+        edge = [ftips[0]]
+        for a, c in ((ftips[0], ftips[1]), (ftips[1], ftips[2]), (ftips[2], att)):
+            for t in (0.25, 0.5, 0.75):
+                p = a.lerp(c, t)
+                p = p.lerp(wr, 0.28 * math.sin(math.pi * t) * (0.7 if c is att else 1.0))
+                edge.append(p)
+            edge.append(c)
+        # The leading edge, from the top finger tip back along the arm to the shoulder.
+        lead = [ftips[0].lerp(wr, 0.5), wr, wr.lerp(el, 0.5), el, el.lerp(sh, 0.5), sh]
+        # Faces fanned from the wrist to the trailing edge, then between the arm and the
+        # body's side; front and back, a hair apart.
+        tris = [(wr, edge[i], edge[i + 1]) for i in range(len(edge) - 1)]
+        tris += [(wr, att, el), (el, att, sh)]
+        tris.append((wr, lead[0], edge[0]))
+        for sign in (1, -1):
+            off = Vector((0, 0.003 * sign, 0))
+            for tri in tris:
+                vs = [bm.verts.new(b.P @ (p + off)) for p in tri]
+                f = bm.faces.new(vs if (sign > 0) == (s > 0) else vs[::-1])
+                f[b.pal] = IDX[b._resolve(skin, f)]
+        skin_near(m, ["body", f"wing_{side}_0", f"wing_{side}_1"] + [f"finger_{side}_{k}" for k in range(3)])
+
+
 # ---------------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------------

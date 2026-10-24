@@ -20,6 +20,7 @@
 [ext_resource type="PackedScene" path="res://prefabs/scenery/ruins_pillar.tscn" id="22_2xiju"]
 [ext_resource type="PackedScene" path="res://prefabs/enemies/pumpkin_crab.tscn" id="23_pcrab"]
 [ext_resource type="PackedScene" path="res://prefabs/scenery/rock_mossy_pile.tscn" id="24_mossy"]
+[ext_resource type="PackedScene" path="res://prefabs/creatures/bat.tscn" id="25_bat"]
 
 [node name="Island" type="Node3D" unique_id=9614455]
 script = ExtResource("1_thmxr")
@@ -275,6 +276,10 @@ wander_radius = 36.0
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.5, 7.2, 20.5)
 floor_min = 0.0
 wander_radius = 36.0
+
+[node name="Bat" parent="." unique_id=1311842207 instance=ExtResource("25_bat")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6.5, -22)
+floor_min = 0.0
 
 [node name="PumpkinCrab" parent="." unique_id=1286540917 instance=ExtResource("23_pcrab")]
 transform = Transform3D(0.5, 0, -0.8660254, 0, 1, 0, 0.8660254, 0, 0.5, -11.4, 0.34687054, 35.31985)

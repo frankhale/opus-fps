@@ -1,0 +1,13 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/enemies/bat.gd" id="1_bat01"]
+[ext_resource type="Script" path="res://scripts/editor_preview.gd" id="2_bat02"]
+[ext_resource type="PackedScene" path="res://assets/enemies/enemy_bat.glb" id="3_bat03"]
+
+[node name="bat" type="CharacterBody3D"]
+script = ExtResource("1_bat01")
+
+[node name="EditorPreview" type="Node3D" parent="."]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, 0)
+script = ExtResource("2_bat02")
+model = ExtResource("3_bat03")
