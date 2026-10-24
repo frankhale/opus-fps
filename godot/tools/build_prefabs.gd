@@ -28,7 +28,7 @@ const PICKUP := preload("res://scripts/weapons/pickup.gd")
 ## prefab is made at this size, so it comes into a level ready to use.
 const WORLD_SCALE := {
 	"tree_pine": 2.4, "tree_pine_tall": 2.2, "tree_oak": 2.0, "tree_dead": 1.8,
-	"tree_stump": 1.4, "log_fallen": 1.4, "bush": 1.5, "bush_short": 1.3, "bush_tall": 1.2, "grass_tuft": 1.4,
+	"tree_stump": 1.4, "log_fallen": 1.4, "tree_fallen": 1.4, "bush": 1.5, "bush_short": 1.3, "bush_tall": 1.2, "grass_tuft": 1.4,
 	"grass_patch": 1.3,
 	"flowers": 1.2, "rock_small": 1.5, "rock_large": 1.6, "rock_cluster": 1.6,
 	"terrain_cliff": 2.0, "ruins_arch": 1.6, "ruins_pillar": 1.6, "stone_wall": 1.4,

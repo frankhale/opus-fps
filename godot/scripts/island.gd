@@ -72,7 +72,7 @@ const SURF_SOUND := "res://assets/sfx/surf_loop.wav"
 ## at random and GRASS_SIZE times its real size), in square chunks GRASS_CHUNK meters
 ## across that are each drawn only within GRASS_RANGE meters, where the fog has mostly
 ## swallowed them anyway. None grows under the ruins (their paving and walls) or the
-## rocks.
+## rocks or fallen trees.
 const GRASS_MODEL := "res://assets/scenery/grass_patch.glb"
 const GRASS_SPACING := 0.7
 const GRASS_SIZE := Vector2(1.2, 1.7)
@@ -283,7 +283,7 @@ func _build_grass() -> void:
 	model.free()
 	if mesh == null:
 		return
-	# Ground taken up by the ruins and rocks, as boxes seen from above.
+	# Ground taken up by the ruins, rocks and fallen trees, as boxes seen from above.
 	var bare: Array[Rect2] = []
 	var keep_off: Array[Node] = []
 	var ruins := get_node_or_null("Ruins")
@@ -291,7 +291,7 @@ func _build_grass() -> void:
 		keep_off.append(ruins)
 	var props := get_node_or_null("Props")
 	if props:
-		keep_off.append_array(props.get_children().filter(func(c: Node) -> bool: return c.name.begins_with("rock")))
+		keep_off.append_array(props.get_children().filter(func(c: Node) -> bool: return c.name.begins_with("rock") or c.name.begins_with("tree_fallen")))
 	for node in keep_off:
 		for g: GeometryInstance3D in node.find_children("*", "GeometryInstance3D", true, false):
 			var box: AABB = g.global_transform * g.get_aabb()

@@ -61,6 +61,12 @@ PALETTE_VARIANTS = {
     # eyes, salmon-pink ear linings and a mauve snout ("roof").
     "enemy_bat": {"dwater": "#2E2944", "purple": "#463D60", "orange": "#94400F", "flesh": "#A85A5C",
                   "red": "#844250", "roof": "#8A586C"},
+    # The fallen tree's warm brown bark, a lighter tan snag, a pale cut face ("sand",
+    # "lsand") with orange growth rings and a reddish bark rim ("roof"), and leaves a
+    # little fresher than the grass round them.
+    "tree_fallen": {"dbark": "#3A2619", "wood": "#664430", "lwood": "#8C6442", "sand": "#B88A5A",
+                    "lsand": "#CCA272", "orange": "#9A5630", "roof": "#5A2C1C", "lgrass": "#5F823A",
+                    "toxic": "#78A044"},
 }
 
 
@@ -2243,7 +2249,7 @@ def terrain_creek(b):
     for x, off, r in ((-1.6, -0.3, 0.32), (0.4, 0.5, 0.28), (2.3, -0.6, 0.36), (-3.0, 0.7, 0.22), (1.1, -0.1, 0.2)):
         rock(x, bend(x) + off, r, z=-depth + r * 0.9, squash=0.9)
     # Cobbles and pebbles on the bed, under the water.
-    for _ in range(26):
+    for _ in range(40):
         x = b.rng.uniform(-3.8, 3.8)
         y = bend(x) + b.rng.uniform(-1.5, 1.5)
         r = b.rng.choice((0.06, 0.08, 0.1, 0.13, 0.17))
@@ -4501,6 +4507,176 @@ def enemy_bat(b):
                 f = bm.faces.new(vs if (sign > 0) == (s > 0) else vs[::-1])
                 f[b.pal] = IDX[b._resolve(skin, f)]
         skin_near(m, ["body", f"wing_{side}_0", f"wing_{side}_1"] + [f"finger_{side}_{k}" for k in range(3)])
+
+
+@asset("scenery")
+def tree_fallen(b):
+    """A fallen tree, about 3.6 m long and 3 m tall: a thick log lying along X, sawn off
+    at its -X end to show pale growth rings inside a reddish bark rim, its far end
+    resting against the broken snag it fell from. The snag leans a little and forks into
+    two broken branches at the top, and ivy climbs its lower half. A spiky tuft grows on
+    the log by its sawn end, and beside it on the +Y side a little stump wears a dome of
+    leaves. Its leaves are two-sided, like the grass."""
+    bm = b.bm
+    bark = {"wood": 4, "dbark": 2, "lwood": 1}
+    green = {"lgrass": 2, "grass": 2, "toxic": 1}
+
+    def leaf(base, direction, length, width, color):
+        """A pointed leaf, folded a little along its midrib, two-sided."""
+        d = Vector(direction).normalized()
+        side = d.cross(Vector((0, 0, 1)))
+        if side.length < 1e-3:
+            side = Vector((1, 0, 0))
+        side.normalize()
+        up = side.cross(d).normalized()
+        base = Vector(base)
+        mid = base + d * length * 0.45
+        tip = base + d * length - up * length * 0.12  # the tip droops
+        pts = [base, mid + side * width / 2 - up * width * 0.12, tip, mid - side * width / 2 - up * width * 0.12,
+               mid + up * width * 0.06]
+        for sgn in (1, -1):
+            vs = [bm.verts.new(b.P @ (q + up * 0.003 * sgn)) for q in pts]
+            for t in ((0, 1, 4), (4, 1, 2), (0, 4, 3), (4, 2, 3)):
+                f = bm.faces.new([vs[i] for i in (t if sgn > 0 else t[::-1])])
+                f[b.pal] = IDX[b._resolve(color, f)]
+
+    def sprout(at, count, length, spread=(25, 70), droop=0.0, width=0.6):
+        """A tuft of leaves fanning out and up from one spot."""
+        a0 = b.rng.uniform(0, 2 * math.pi)
+        for k in range(count):
+            a = a0 + 2 * math.pi * (k + b.rng.uniform(-0.25, 0.25)) / count
+            tilt = math.radians(b.rng.uniform(*spread))
+            d = Vector((math.cos(a) * math.sin(tilt), math.sin(a) * math.sin(tilt), math.cos(tilt) - droop))
+            ln = length * b.rng.uniform(0.75, 1.15)
+            leaf(at, d, ln, ln * width * b.rng.uniform(0.9, 1.15), green)
+
+    # The log: rings of vertices along X, each pushed in or out by its bark plate so
+    # long ridges run down the log, every plate one color for a stretch.
+    x0, x1, seg, n = -1.5, 1.42, 14, 12
+    ridge = [b.rng.uniform(-0.05, 0.03) for _ in range(seg)]
+    stagger = [b.rng.randrange(4) for _ in range(seg)]  # where each plate's stretches start
+
+    def axis(t):
+        return Vector((x0 + (x1 - x0) * t, 0.0, 0.31 + 0.06 * t))  # the far end rests a little higher
+
+    rings = []
+    for i in range(n + 1):
+        t, c = i / n, axis(i / n)
+        r = 0.33 - 0.03 * t
+        ring = []
+        for k in range(seg):
+            a = 2 * math.pi * k / seg
+            rr = r * (1 + ridge[k] + (b.rng.uniform(-0.015, 0.015) if i else 0))
+            ring.append(bm.verts.new(b.P @ (c + Vector((0, math.cos(a) * rr, math.sin(a) * rr)))))
+        rings.append(ring)
+    log, plates = [], {}
+    for i in range(n):
+        for k in range(seg):
+            k1 = (k + 1) % seg
+            f = bm.faces.new((rings[i][k], rings[i][k1], rings[i + 1][k1], rings[i + 1][k]))
+            plates[f] = (k, (i + stagger[k]) // 4)
+            log.append(f)
+    log.append(bm.faces.new(rings[-1]))  # hidden in the snag
+    # The sawn end: bands of growth rings inside the bark rim, round a heart a little
+    # off center, so the outer bands follow the bark's ridges and the inner ones are round.
+    heart = axis(0) + Vector((0, 0.03, -0.02))
+    outer, cut = rings[0], {}
+    for frac, color in ((0.9, "roof"), (0.82, "orange"), (0.68, "lsand"), (0.62, "orange"), (0.47, "sand"),
+                        (0.42, "orange"), (0.27, "lsand"), (0.22, "orange"), (0.1, "sand")):
+        inner = []
+        for k in range(seg):
+            a = 2 * math.pi * k / seg
+            rr = 0.33 * frac * (1 + ridge[k] * frac ** 2)
+            inner.append(bm.verts.new(b.P @ (heart.lerp(axis(0), frac) + Vector((0, math.cos(a) * rr, math.sin(a) * rr)))))
+        for k in range(seg):
+            k1 = (k + 1) % seg
+            f = bm.faces.new((outer[k], outer[k1], inner[k1], inner[k]))
+            cut[f] = color
+            log.append(f)
+        outer = inner
+    center = bm.verts.new(b.P @ heart)
+    for k in range(seg):
+        f = bm.faces.new((outer[k], outer[(k + 1) % seg], center))
+        cut[f] = "orange"
+        log.append(f)
+    bmesh.ops.recalc_face_normals(bm, faces=log)
+    bm.normal_update()
+    salt = b.rng.random()
+    for f in log:
+        if f in cut:
+            c = cut[f]
+        elif f.normal.z < -0.55:
+            c = "dbark"  # in shadow underneath
+        elif f in plates:
+            r = random.Random(hash((salt,) + plates[f]))
+            c = r.choices(list(bark), weights=list(bark.values()))[0]
+        else:
+            c = "wood"
+        f[b.pal] = IDX[c]
+
+    # The snag the log fell from: a leaning trunk flaring at its foot, lighter than the
+    # log, its bark in long vertical strips.
+    pts = [(1.62, 0.12, -0.05), (1.62, 0.12, 0.25), (1.6, 0.13, 0.7), (1.55, 0.15, 1.2), (1.47, 0.17, 1.7),
+           (1.39, 0.18, 2.15), (1.33, 0.18, 2.45), (1.32, 0.18, 2.52)]
+    radii = [0.46, 0.36, 0.3, 0.25, 0.2, 0.15, 0.11, 0.0]
+
+    def snag_color(f):
+        if f.normal.z > 0.7:
+            return "sand"  # bare wood where it broke
+        c = f.calc_center_median()
+        strip = int((math.atan2(c.y - 0.15, c.x - 1.5) + math.pi) / (2 * math.pi) * 7)
+        r = random.Random(hash((salt, "snag", strip, int(c.z / 0.6))))
+        return r.choices(("lwood", "wood", "dbark"), weights=(4, 2, 1))[0]
+    b.tube(pts, radii, seg=8, color=snag_color)
+    # Two broken branches at the top: a long one up toward the log with a twig, a short
+    # one straight up, and a stub lower down.
+    b.tube([(1.34, 0.18, 2.4), (1.18, 0.2, 2.72), (1.02, 0.2, 2.98), (1.0, 0.2, 3.02)], [0.09, 0.06, 0.035, 0.0], seg=5, color=snag_color)
+    b.tube([(1.08, 0.2, 2.86), (1.13, 0.22, 3.04), (1.135, 0.22, 3.06)], [0.03, 0.015, 0.0], seg=4, color=snag_color)
+    b.tube([(1.33, 0.18, 2.4), (1.39, 0.16, 2.78), (1.4, 0.16, 2.83)], [0.08, 0.045, 0.0], seg=5, color=snag_color)
+    b.tube([(1.45, 0.17, 2.0), (1.24, 0.17, 2.14), (1.2, 0.17, 2.16)], [0.06, 0.035, 0.0], seg=4, color=snag_color)
+    for a in (55, 130, 300):  # roots splaying from its foot
+        r = math.radians(a)
+        b.limb((1.62 + 0.22 * math.cos(r), 0.12 + 0.22 * math.sin(r), 0.22),
+               (1.62 + 0.55 * math.cos(r), 0.12 + 0.55 * math.sin(r), -0.02), 0.13, 0.05, 5, "wood")
+    b.limb((1.3, 0.42, 0.22), (0.92, 0.85, 0.02), 0.05, 0.03, 4, "wood")  # a fallen branch under the log
+
+    # Ivy climbing the snag's lower half in a loose spiral: leafy clumps hugging the bark
+    # with leaves standing out of them and drooping.
+    for j in range(13):
+        z = 0.45 + j * 0.12 + b.rng.uniform(-0.04, 0.04)
+        a = math.radians(-100 + j * 47 + b.rng.uniform(-15, 15))
+        k = max(i for i in range(len(pts) - 1) if pts[i][2] <= z)  # the stretch of trunk it's on
+        t = (z - pts[k][2]) / (pts[k + 1][2] - pts[k][2])
+        core = Vector(pts[k]).lerp(Vector(pts[k + 1]), t)
+        rad = radii[k] + (radii[k + 1] - radii[k]) * t
+        out = Vector((math.cos(a), math.sin(a), 0))
+        at = core + out * (rad + 0.02)
+        b.ico(0.13, 1, loc=at, scale=(1, 1, 1.3), rot=(0, 0, b.rng.uniform(0, 90)), color=leafy, jit=0.03)
+        for _ in range(7):
+            d = out + Vector((b.rng.uniform(-0.9, 0.9), b.rng.uniform(-0.9, 0.9), b.rng.uniform(-0.7, 0.6)))
+            leaf(at + d.normalized() * 0.08, d, b.rng.uniform(0.17, 0.25), 0.12, green)
+    sprout((1.35, -0.25, 0.04), 5, 0.22, spread=(50, 80), droop=0.1)  # sprigs at its foot
+    sprout((1.95, 0.35, 0.04), 4, 0.2, spread=(50, 80), droop=0.1)
+
+    # A spiky tuft on the log by its sawn end, and a sprig farther along.
+    sprout(axis(0.13) + Vector((0, -0.04, 0.28)), 12, 0.34, spread=(5, 60), width=0.32)
+    sprout(axis(0.55) + Vector((0, 0.05, 0.3)), 3, 0.16, spread=(30, 70))
+
+    # The little stump on the +Y side with a dome of leaves on top.
+    stump = (-0.95, 0.66)
+    b.lathe([(0.22, 0), (0.19, 0.06), (0.18, 0.26)], seg=8, loc=(*stump, 0),
+            color=lambda f: "sand" if f.normal.z > 0.9 else {"wood": 2, "lwood": 1}, jit=0.01)
+    dome = Vector((*stump, 0.46))
+    b.ico(0.27, 1, loc=dome, scale=(1, 1, 0.9), color=leafy, jit=0.03, floor=0.24)
+    for _ in range(40):
+        a, z = b.rng.uniform(0, 2 * math.pi), b.rng.uniform(-0.35, 1.0)
+        d = Vector((math.cos(a) * math.sqrt(1 - z * z), math.sin(a) * math.sqrt(1 - z * z), z))
+        leaf(dome + d * 0.2, d + Vector((0, 0, 0.3)), b.rng.uniform(0.16, 0.22), 0.12, green)
+
+    # Leaves fallen on the ground round about.
+    for x, y in ((-0.3, -0.55), (0.6, -0.5), (0.2, 0.6), (-1.8, 0.3), (1.1, -0.75), (-0.4, 0.9)):
+        a = b.rng.uniform(0, 2 * math.pi)
+        leaf((x, y, 0.025), (math.cos(a), math.sin(a), 0.05), 0.13, 0.08, {"lgrass": 1, "grass": 1})
 
 
 # ---------------------------------------------------------------------------

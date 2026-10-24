@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://assets/scenery/tree_fallen.glb" id="model"]
+
+[node name="tree_fallen" instance=ExtResource("model")]
+transform = Transform3D(1.4, 0, 0, 0, 1.4, 0, 0, 0, 1.4, 0.0, 0.0, 0.0)
