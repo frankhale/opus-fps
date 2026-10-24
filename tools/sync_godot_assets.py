@@ -7,7 +7,8 @@ For every model this writes the [params] section of its .import file so that:
     PS1_Portal membrane by the shimmering see-through godot/materials/ps1_portal.tres,
     and a creek's PS1_Water sheet by the flowing godot/materials/ps1_water.tres, and
     grass by the soft godot/materials/grass.tres, and the jellyfish's PS1_Jelly bell by
-    the glowing pink-to-blue godot/materials/jelly.tres
+    the glowing pink-to-blue godot/materials/jelly.tres, and poured PS1_Flow water (the
+    rain fountain's) by the rippling godot/materials/flow.tres
   * a model with its own palette (assets/palette_<model>.png, see PALETTE_VARIANTS in
     generate_assets.py) gets PS1 materials of its own sampling that palette, written as
     godot/materials/ps1_palette_<model>.tres and ps1_glow_<model>.tres
@@ -35,6 +36,8 @@ PORTALS = {"portal"}
 WATER = {"terrain_creek"}
 # Models with a PS1_Jelly bell.
 JELLY = {"enemy_jellyfish"}
+# Models with poured PS1_Flow water.
+FLOW = {"fountain_rain"}
 # Grass, drawn with the soft grass material (godot/materials/grass.tres) instead of the
 # sharp PS1 one, since it's scattered by the thousand.
 GRASS = {"grass_patch"}
@@ -76,6 +79,12 @@ def glb_import(name, collision):
 "PS1_Jelly": {
 "use_external/enabled": true,
 "use_external/path": "res://materials/jelly.tres"
+}'''
+    if name in FLOW:
+        portal += ''',
+"PS1_Flow": {
+"use_external/enabled": true,
+"use_external/path": "res://materials/flow.tres"
 }'''
     nodes = ""
     if collision:

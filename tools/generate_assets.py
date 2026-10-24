@@ -111,7 +111,7 @@ def cell_rect(i, margin=2):
 
 def make_material(img, glow):
     mat = bpy.data.materials.new({False: "PS1_Palette", True: "PS1_Glow", "portal": "PS1_Portal",
-                                  "water": "PS1_Water", "jelly": "PS1_Jelly"}[glow])
+                                  "water": "PS1_Water", "jelly": "PS1_Jelly", "flow": "PS1_Flow"}[glow])
     nt = mat.node_tree
     bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
     if glow == "jelly":
@@ -123,6 +123,16 @@ def make_material(img, glow):
         bsdf.inputs["Emission Strength"].default_value = 0.3
         bsdf.inputs["Roughness"].default_value = 0.5
         mat.diffuse_color = pink
+        return mat
+    if glow == "flow":
+        # Placeholder look (previews, other engines): flat glowing turquoise. Its UVs are
+        # flow coordinates (see Builder.flow), and the engine swaps in a shader that
+        # scrolls ripples along them so the water pours and spreads.
+        aqua = (*hex_rgb("#5CC6DA"), 1.0)
+        bsdf.inputs["Base Color"].default_value = aqua
+        bsdf.inputs["Emission Color"].default_value = aqua
+        bsdf.inputs["Emission Strength"].default_value = 0.5
+        mat.diffuse_color = aqua
         return mat
     if glow == "water":
         # Placeholder look (previews, other engines): flat see-through blue-green. Its UVs
@@ -156,8 +166,8 @@ def M(loc=(0, 0, 0), rot=(0, 0, 0), scale=(1, 1, 1)):
 
 
 # Material slot per `glow` value: plain palette, emissive palette, portal membrane,
-# flowing water, jellyfish bell.
-MAT_INDEX = {False: 0, True: 1, "portal": 2, "water": 3, "jelly": 4}
+# flowing water, jellyfish bell, poured water.
+MAT_INDEX = {False: 0, True: 1, "portal": 2, "water": 3, "jelly": 4, "flow": 5}
 
 
 class Builder:
@@ -170,6 +180,9 @@ class Builder:
         # weights through weigh(); any left unweighted are bound to the first bone.
         self.bones = []
         self.deform = None
+        # Flow coordinates of poured water's vertices (glow="flow"): meters, u along the
+        # flow and v across it, which the engine's shader scrolls ripples along.
+        self.flow = {}
 
     @contextmanager
     def at(self, loc=(0, 0, 0), rot=(0, 0, 0), scale=(1, 1, 1)):
@@ -392,6 +405,10 @@ class Builder:
                 # shader can scroll ripples downstream however the model is turned.
                 for l in f.loops:
                     l[uvl].uv = (l.vert.co.x, l.vert.co.y)
+                continue
+            if f.material_index == MAT_INDEX["flow"]:
+                for l in f.loops:
+                    l[uvl].uv = self.flow.get(l.vert, (0.0, 0.0))
                 continue
             u0, v0, u1, v1 = cell_rect(f[self.pal])
             n = f.normal
@@ -4749,14 +4766,37 @@ def fountain_rain(b):
         with b.at(rot=(0, 0, az + 360 / 32)):
             b.box((0.32, 0.05, 0.5), loc=(1.3, 0, 0.32), color={"olive": 2, "grass": 1})
 
-    # The pool, and the stream spilling over the front of the wall.
-    rings = [[bm.verts.new(out(360 * k / 32, r, 0.52)) for k in range(32)] for r in (0.66, 1.2)]
+    # The pool, its water spreading out from the column to the wall, and the stream
+    # spilling over the front of the wall. Poured water (glow="flow") gets flow
+    # coordinates, so the engine's shader ripples it along the way it runs.
+    def flow_strip(path, half, color):
+        """A sheet of water following `path` (center points), `half` wide either side,
+        u running along it in meters."""
+        u, prev, rows = 0.0, None, []
+        for i, p in enumerate(path):
+            p = Vector(p)
+            d = (Vector(path[min(i + 1, len(path) - 1)]) - Vector(path[max(i - 1, 0)])).normalized()
+            side = d.cross(Vector((0, 0, 1))).normalized()
+            u += (p - prev).length if prev is not None else 0.0
+            prev = p
+            row = [bm.verts.new(b.P @ (p + side * w)) for w in (-half, half)]
+            for v, w in zip(row, (-half, half)):
+                b.flow[v] = (u, w)
+            rows.append(row)
+        for r0, r1 in zip(rows, rows[1:]):
+            bm.faces.new((r0[0], r0[1], r1[1], r1[0]))
+        b.paint([v for r in rows for v in r], color, glow="flow")
+
+    # 33 vertices a ring: the last doubles the first, so v can run on round without wrapping.
+    rings = [[bm.verts.new(out(360 * k / 32, r, 0.52)) for k in range(33)] for r in (0.66, 1.2)]
+    for r, ring in zip((0.66, 1.2), rings):
+        for k, v in enumerate(ring):
+            b.flow[v] = (r, 2 * math.pi * 0.93 * k / 32)  # u outward, v round the pool
     for k in range(32):
-        k1 = (k + 1) % 32
-        bm.faces.new((rings[0][k], rings[1][k], rings[1][k1], rings[0][k1]))
-    b.paint(rings[0] + rings[1], {"cyan": 6, "sky": 1}, glow=True)
-    b.box((0.36, 0.3, 0.02), loc=(0, -1.3, 0.52), color={"sky": 2, "cyan": 1}, glow=True)
-    b.box((0.3, 0.03, 0.44), loc=(0, -1.46, 0.3), color={"sky": 2, "white": 1}, glow=True)
+        bm.faces.new((rings[0][k], rings[1][k], rings[1][k + 1], rings[0][k + 1]))
+    b.paint(rings[0] + rings[1], "cyan", glow="flow")
+    flow_strip([(0, -1.15, 0.53), (0, -1.45, 0.53), (0, -1.47, 0.45), (0, -1.49, 0.25), (0, -1.5, 0.06)], 0.15,
+               "sky")
     b.ico(0.12, 1, loc=(0, -1.55, 0.06), scale=(1.6, 1, 0.5), color={"white": 1, "sky": 1}, glow=True)
 
     # The plinth, a brass foot ring studded with bolts, the cream column and the brass
@@ -4830,8 +4870,15 @@ def fountain_rain(b):
             b.limb((0.34, 0, 0.88), (0.68, 0, 0.88), 0.075, 0.075, 8, brass)
             b.limb((0.64, 0, 0.88), (0.72, 0, 0.88), 0.11, 0.1, 8, brass)
             b.limb((0.72, 0, 0.88), (0.73, 0, 0.88), 0.065, 0.065, 8, "black")
-            b.tube([(0.72, 0, 0.86), (0.8, 0, 0.83), (0.86, 0, 0.74), (0.89, 0, 0.62), (0.9, 0, 0.51)],
-                   [0.055, 0.06, 0.06, 0.065, 0.07], seg=6, color={"sky": 2, "white": 1, "cyan": 1}, glow=True)
+            path = [Vector(p) for p in ((0.72, 0, 0.86), (0.8, 0, 0.83), (0.86, 0, 0.74), (0.89, 0, 0.62),
+                                        (0.9, 0, 0.51))]
+            rings = b.tube(path, [0.055, 0.06, 0.06, 0.065, 0.07], seg=6, color="sky", glow="flow")
+            u = 0.0
+            for i, ring in enumerate(rings):
+                u += (path[i] - path[i - 1]).length if i else 0.0
+                for k, v in enumerate(ring):
+                    # Falling: ripples twice as close and fast. v mirrors round the tube so it has no seam.
+                    b.flow[v] = (u * 2.0, 0.06 * min(k, 6 - k))
             b.ico(0.09, 1, loc=(0.9, 0, 0.52), scale=(1.4, 1.4, 0.4), color={"white": 1, "sky": 1}, glow=True)
 
     # Leaves and white flowers among the boulders and along the wall.
@@ -4875,7 +4922,7 @@ def export_glb(obj, path):
 def generate():
     os.makedirs(OUT, exist_ok=True)
     clear_objects()
-    kinds = (False, True, "portal", "water", "jelly")
+    kinds = (False, True, "portal", "water", "jelly", "flow")
     img = build_palette_image()
     mats = tuple(make_material(img, g) for g in kinds)
     results = []

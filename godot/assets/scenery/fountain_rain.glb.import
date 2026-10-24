@@ -41,6 +41,11 @@ materials/extract_format=0
 materials/extract_path=""
 _subresources={
 "materials": {
+"PS1_Flow": {
+"use_external/enabled": true,
+"use_external/fallback_path": "res://materials/flow.tres",
+"use_external/path": "res://materials/flow.tres"
+},
 "PS1_Glow": {
 "use_external/enabled": true,
 "use_external/fallback_path": "res://materials/ps1_glow_fountain_rain.tres",
