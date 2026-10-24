@@ -6,7 +6,8 @@ For every model this writes the [params] section of its .import file so that:
     materials (godot/materials/ps1_palette.tres and ps1_glow.tres), and a portal's
     PS1_Portal membrane by the shimmering see-through godot/materials/ps1_portal.tres,
     and a creek's PS1_Water sheet by the flowing godot/materials/ps1_water.tres, and
-    grass by the soft godot/materials/grass.tres
+    grass by the soft godot/materials/grass.tres, and the jellyfish's PS1_Jelly bell by
+    the glowing pink-to-blue godot/materials/jelly.tres
   * terrain and solid scenery get a static trimesh collision body
 
 Run from the repo root after regenerating the assets, then let Godot reimport:
@@ -28,6 +29,8 @@ NO_COLLISION = {"grass_tuft", "grass_patch", "flowers", "skull_pile", "bush", "b
 PORTALS = {"portal"}
 # Models with a PS1_Water sheet.
 WATER = {"terrain_creek"}
+# Models with a PS1_Jelly bell.
+JELLY = {"enemy_jellyfish"}
 # Grass, drawn with the soft grass material (godot/materials/grass.tres) instead of the
 # sharp PS1 one, since it's scattered by the thousand.
 GRASS = {"grass_patch"}
@@ -60,6 +63,12 @@ def glb_import(name, collision):
 "PS1_Water": {
 "use_external/enabled": true,
 "use_external/path": "res://materials/ps1_water.tres"
+}'''
+    if name in JELLY:
+        portal += ''',
+"PS1_Jelly": {
+"use_external/enabled": true,
+"use_external/path": "res://materials/jelly.tres"
 }'''
     nodes = ""
     if collision:

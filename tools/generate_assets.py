@@ -87,9 +87,19 @@ def cell_rect(i, margin=2):
 
 def make_material(img, glow):
     mat = bpy.data.materials.new({False: "PS1_Palette", True: "PS1_Glow", "portal": "PS1_Portal",
-                                  "water": "PS1_Water"}[glow])
+                                  "water": "PS1_Water", "jelly": "PS1_Jelly"}[glow])
     nt = mat.node_tree
     bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+    if glow == "jelly":
+        # Placeholder look (previews, other engines): a flat glowing pink. The engine
+        # replaces it with a soft shader shading from pink to blue toward its edges.
+        pink = (*hex_rgb("#D88AD0"), 1.0)
+        bsdf.inputs["Base Color"].default_value = pink
+        bsdf.inputs["Emission Color"].default_value = pink
+        bsdf.inputs["Emission Strength"].default_value = 0.3
+        bsdf.inputs["Roughness"].default_value = 0.5
+        mat.diffuse_color = pink
+        return mat
     if glow == "water":
         # Placeholder look (previews, other engines): flat see-through blue-green. Its UVs
         # are flow coordinates, not palette cells, so it doesn't sample the palette.
@@ -122,8 +132,8 @@ def M(loc=(0, 0, 0), rot=(0, 0, 0), scale=(1, 1, 1)):
 
 
 # Material slot per `glow` value: plain palette, emissive palette, portal membrane,
-# flowing water.
-MAT_INDEX = {False: 0, True: 1, "portal": 2, "water": 3}
+# flowing water, jellyfish bell.
+MAT_INDEX = {False: 0, True: 1, "portal": 2, "water": 3, "jelly": 4}
 
 
 class Builder:
@@ -374,7 +384,8 @@ class Builder:
         bm.to_mesh(mesh)
         bm.free()
         for p in mesh.polygons:
-            p.use_smooth = False
+            # Flat-shaded, except the jelly, which is shaded smoothly across its faces.
+            p.use_smooth = p.material_index == MAT_INDEX["jelly"]
         for m in mats[:used + 1]:
             mesh.materials.append(m)
         obj = bpy.data.objects.new(name, mesh)
@@ -2733,9 +2744,10 @@ def enemy_jellyfish(b):
             else:
                 b.weigh([v], {bones[j]: 1.0})
 
-    # The bell: a broad dome over a shallow hollow underneath, in bands from a pinkish
-    # crown through violet to blue round the sides, ribbed with alternating shades, a
-    # glowing orange band low down and pale underneath.
+    # The bell: a broad dome over a shallow hollow underneath, drawn with its own soft
+    # material (PS1_Jelly) that the game shades from pink to blue toward its edges. Its
+    # palette colors are a fallback: bands from a pinkish crown through violet to blue
+    # round the sides, ribbed with alternating shades, and pale underneath.
     def bell_color(f):
         c = f.calc_center_median()
         if f.normal.z < -0.3 and c.z < 0.25:
@@ -2753,9 +2765,12 @@ def enemy_jellyfish(b):
     dome = [(BELL_R * math.sin(math.radians(a)), 0.12 + (BELL_H - 0.12) * math.cos(math.radians(a)))
             for a in (0, 18, 34, 48, 61, 72, 82, 90)]
     b.lathe(dome + [(0.79, 0.06), (0.74, 0.03), (0.6, 0.08), (0.35, 0.14), (0.0, 0.16)], seg=16,
-            color=bell_color)
+            color=bell_color, glow="jelly")
     # The glowing band and the scalloped rim of pale lappets below it.
-    b.lathe([(0.802, 0.135), (0.81, 0.11), (0.795, 0.075)], seg=16, color="orange", glow=True)
+    band = b.lathe([(0.802, 0.135), (0.81, 0.11), (0.795, 0.075)], seg=16, color="orange", glow=True)
+    # Just the ring: its end caps would show as a glowing disc under the bell.
+    bmesh.ops.delete(b.bm, geom=list({f for v in band for f in v.link_faces if len(f.verts) > 4}),
+                     context="FACES_ONLY")
     for k in range(32):
         a = 2 * math.pi * (k + 0.5) / 32
         b.ico(0.05, 1, loc=(math.cos(a) * 0.765, math.sin(a) * 0.765, 0.045), scale=(1, 1.1, 0.8),
@@ -4318,7 +4333,7 @@ def generate():
     os.makedirs(OUT, exist_ok=True)
     clear_objects()
     img = build_palette_image()
-    mats = tuple(make_material(img, g) for g in (False, True, "portal", "water"))
+    mats = tuple(make_material(img, g) for g in (False, True, "portal", "water", "jelly"))
     results = []
     for i, (cat, name, fn) in enumerate(ASSETS):
         if ONLY and ONLY not in (cat, name):
