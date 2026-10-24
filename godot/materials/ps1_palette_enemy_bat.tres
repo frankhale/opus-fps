@@ -1,0 +1,13 @@
+[gd_resource type="ShaderMaterial" load_steps=3 format=3]
+
+[ext_resource type="Shader" path="res://materials/ps1.gdshader" id="1"]
+[ext_resource type="Texture2D" path="res://assets/palette_enemy_bat.png" id="2"]
+
+[resource]
+resource_name = "PS1_Palette"
+shader = ExtResource("1")
+shader_parameter/palette = ExtResource("2")
+shader_parameter/snap_scale = 1.0
+shader_parameter/affine_strength = 1.0
+shader_parameter/affine_max_texels = 2.0
+shader_parameter/emission_strength = 0.0

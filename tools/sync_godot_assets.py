@@ -8,6 +8,9 @@ For every model this writes the [params] section of its .import file so that:
     and a creek's PS1_Water sheet by the flowing godot/materials/ps1_water.tres, and
     grass by the soft godot/materials/grass.tres, and the jellyfish's PS1_Jelly bell by
     the glowing pink-to-blue godot/materials/jelly.tres
+  * a model with its own palette (assets/palette_<model>.png, see PALETTE_VARIANTS in
+    generate_assets.py) gets PS1 materials of its own sampling that palette, written as
+    godot/materials/ps1_palette_<model>.tres and ps1_glow_<model>.tres
   * terrain and solid scenery get a static trimesh collision body
 
 Run from the repo root after regenerating the assets, then let Godot reimport:
@@ -20,6 +23,7 @@ import shutil
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "assets")
 DST = os.path.join(ROOT, "godot", "assets")
+MATERIALS = os.path.join(ROOT, "godot", "materials")
 CATEGORIES = ["terrain", "scenery", "weapons", "pickups", "enemies", "viewmodel", "ammo"]
 
 # Scenery you walk through rather than bump into.
@@ -51,6 +55,9 @@ detect_3d/compress_to=0
 
 def glb_import(name, collision):
     palette = "grass.tres" if name in GRASS else "ps1_palette.tres"
+    glow = "ps1_glow.tres"
+    if os.path.exists(os.path.join(SRC, f"palette_{name}.png")):
+        palette, glow = f"ps1_palette_{name}.tres", f"ps1_glow_{name}.tres"
     portal = ""
     if name in PORTALS:
         portal = ''',
@@ -101,7 +108,7 @@ _subresources={{
 "materials": {{
 "PS1_Glow": {{
 "use_external/enabled": true,
-"use_external/path": "res://materials/ps1_glow.tres"
+"use_external/path": "res://materials/{glow}"
 }},
 "PS1_Palette": {{
 "use_external/enabled": true,
@@ -124,10 +131,24 @@ def write(path, text):
         f.write(text)
 
 
+def variant_materials(name):
+    """A model's own PS1 materials: the shared ones, sampling its palette instead."""
+    for kind in ("palette", "glow"):
+        with open(os.path.join(MATERIALS, f"ps1_{kind}.tres")) as f:
+            text = f.read()
+        text = text.replace("res://assets/palette.png", f"res://assets/palette_{name}.png")
+        with open(os.path.join(MATERIALS, f"ps1_{kind}_{name}.tres"), "w") as f:
+            f.write(text)
+
+
 def main():
     os.makedirs(DST, exist_ok=True)
-    shutil.copy2(os.path.join(SRC, "palette.png"), os.path.join(DST, "palette.png"))
-    write(os.path.join(DST, "palette.png.import"), PALETTE_IMPORT)
+    for f in sorted(os.listdir(SRC)):
+        if f == "palette.png" or f.startswith("palette_") and f.endswith(".png"):
+            shutil.copy2(os.path.join(SRC, f), os.path.join(DST, f))
+            write(os.path.join(DST, f + ".import"), PALETTE_IMPORT)
+            if f != "palette.png":
+                variant_materials(f[len("palette_"):-len(".png")])
     count = 0
     for cat in CATEGORIES:
         os.makedirs(os.path.join(DST, cat), exist_ok=True)

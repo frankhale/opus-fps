@@ -53,18 +53,30 @@ PALETTE = [
 COLS, ROWS, SW = 8, 4, 16  # swatch grid and swatch size in pixels
 IDX = {name: i for i, (name, _) in enumerate(PALETTE)}
 
+# Palette variants: a model listed here gets its own copy of the palette with these
+# swatches recolored (written as palette_<model>.png), for colors the shared palette
+# lacks. The model still picks its colors by the usual names.
+PALETTE_VARIANTS = {
+    # The bat's soft dark indigo fur and wings, muted violet finger ridges, warm orange
+    # eyes, salmon-pink ear linings and a mauve snout ("roof").
+    "enemy_bat": {"dwater": "#2E2944", "purple": "#463D60", "orange": "#94400F", "flesh": "#A85A5C",
+                  "red": "#844250", "roof": "#8A586C"},
+}
+
 
 def hex_rgb(h):
     return tuple(int(h[i:i + 2], 16) / 255 for i in (1, 3, 5))
 
 
-def build_palette_image():
+def build_palette_image(variant=None):
+    """The palette texture, or a model's variant of it (see PALETTE_VARIANTS)."""
     w, h = COLS * SW, ROWS * SW
-    img = bpy.data.images.new("ps1_palette", w, h, alpha=False)
+    swaps = PALETTE_VARIANTS.get(variant, {})
+    img = bpy.data.images.new(f"palette_{variant}" if variant else "ps1_palette", w, h, alpha=False)
     rng = random.Random(7)
     px = [1.0] * (w * h * 4)
-    for i, (_, hx) in enumerate(PALETTE):
-        r, g, b = hex_rgb(hx)
+    for i, (name, hx) in enumerate(PALETTE):
+        r, g, b = hex_rgb(swaps.get(name, hx))
         x0, y0 = (i % COLS) * SW, h - (i // COLS + 1) * SW
         for y in range(SW):
             for x in range(SW):
@@ -72,7 +84,7 @@ def build_palette_image():
                 o = ((y0 + y) * w + x0 + x) * 4
                 px[o:o + 3] = (min(1, r * k), min(1, g * k), min(1, b * k))
     img.pixels.foreach_set(px)
-    img.filepath_raw = os.path.join(OUT, "palette.png")
+    img.filepath_raw = os.path.join(OUT, f"palette_{variant}.png" if variant else "palette.png")
     img.file_format = "PNG"
     img.save()
     return img
@@ -4414,7 +4426,7 @@ def enemy_bat(b):
 
     # Snout: a pink pug nose with two nostrils, and two little fangs under it.
     n = H + Vector((0, -0.195, -0.055))
-    b.ico(0.04, 2, loc=n, scale=(1.25, 0.75, 0.85), color="flesh")
+    b.ico(0.04, 2, loc=n, scale=(1.25, 0.75, 0.85), color="roof")  # mauve in its palette
     for s in (1, -1):
         b.ico(0.01, 1, loc=n + Vector((0.016 * s, -0.03, 0.002)), color="black")
         b.limb(n + Vector((0.022 * s, -0.012, -0.03)), n + Vector((0.024 * s, -0.016, -0.075)), 0.009, 0.0,
@@ -4517,8 +4529,9 @@ def export_glb(obj, path):
 def generate():
     os.makedirs(OUT, exist_ok=True)
     clear_objects()
+    kinds = (False, True, "portal", "water", "jelly")
     img = build_palette_image()
-    mats = tuple(make_material(img, g) for g in (False, True, "portal", "water", "jelly"))
+    mats = tuple(make_material(img, g) for g in kinds)
     results = []
     for i, (cat, name, fn) in enumerate(ASSETS):
         if ONLY and ONLY not in (cat, name):
@@ -4526,11 +4539,25 @@ def generate():
         clear_objects()
         b = Builder(seed=1000 + i)
         fn(b)
-        obj = b.to_object(name, mats)
+        variant = None
+        if name in PALETTE_VARIANTS:
+            # Its own materials on its own palette, under the usual names (the shared ones
+            # step aside meanwhile, as Blender keeps names unique), so the engine maps
+            # them as it does any other model's.
+            for m in mats:
+                m.name += "~"
+            variant = tuple(make_material(build_palette_image(name), g) for g in kinds)
+        obj = b.to_object(name, variant or mats)
         tris = sum(len(p.vertices) - 2 for p in obj.data.polygons)
         os.makedirs(os.path.join(OUT, cat), exist_ok=True)
         export_glb(obj, os.path.join(OUT, cat, name + ".glb"))
         results.append((cat, name, tris, tuple(obj.dimensions)))
+        if variant:
+            clear_objects()
+            for m in variant:
+                bpy.data.materials.remove(m)
+            for m in mats:
+                m.name = m.name[:-1]
     clear_objects()
     for cat, name, tris, dims in results:
         print(f"ASSET {cat:8} {name:26} {tris:5} tris  {dims[0]:.2f} x {dims[1]:.2f} x {dims[2]:.2f} m")

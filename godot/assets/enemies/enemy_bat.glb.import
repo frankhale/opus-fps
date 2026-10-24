@@ -43,13 +43,13 @@ _subresources={
 "materials": {
 "PS1_Glow": {
 "use_external/enabled": true,
-"use_external/fallback_path": "res://materials/ps1_glow.tres",
-"use_external/path": "res://materials/ps1_glow.tres"
+"use_external/fallback_path": "res://materials/ps1_glow_enemy_bat.tres",
+"use_external/path": "res://materials/ps1_glow_enemy_bat.tres"
 },
 "PS1_Palette": {
 "use_external/enabled": true,
-"use_external/fallback_path": "res://materials/ps1_palette.tres",
-"use_external/path": "res://materials/ps1_palette.tres"
+"use_external/fallback_path": "res://materials/ps1_palette_enemy_bat.tres",
+"use_external/path": "res://materials/ps1_palette_enemy_bat.tres"
 }
 }
 }
