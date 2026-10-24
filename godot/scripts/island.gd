@@ -69,18 +69,9 @@ const WALL_HEIGHT := 10.0
 const GROUND_MATERIAL := preload("res://materials/ps1_palette.tres")
 const SEA_SHADER := preload("res://materials/sea.gdshader")
 const SURF_SOUND := "res://assets/sfx/surf_loop.wav"
-## Grass on the grassy ground: a clump about every GRASS_SPACING meters (jittered, turned
-## at random and GRASS_SIZE times its real size), in square chunks GRASS_CHUNK meters
-## across that are each drawn only within GRASS_RANGE meters, where the fog has mostly
-## swallowed them anyway. None grows under the ruins (their paving and walls) or the
-## rocks, fallen trees or fountains.
-const GRASS_MODEL := "res://assets/scenery/grass_patch.glb"
-## Props (by name) that grass is kept off.
+## Grass (GrassField) grows on the grassy ground, but not under the ruins (their paving
+## and walls) or the props named here: the rocks, fallen trees and fountains.
 const BARE_PROPS := ["rock", "tree_fallen", "fountain"]
-const GRASS_SPACING := 0.7
-const GRASS_SIZE := Vector2(1.2, 1.7)
-const GRASS_CHUNK := 12.0
-const GRASS_RANGE := 45.0
 
 ## The ground is levelled for the ruins (the Ruins node), to the natural ground's height
 ## at the group's origin, out to RUIN_FLAT meters round it, blending back into the hills
@@ -275,65 +266,23 @@ func _build_ground() -> void:
 	ground.add_child(body)
 
 
-## Scatters grass over the grassy ground, the same every time (it's seeded), as
-## MultiMesh chunks: one draw each, and far ones skipped.
+## Scatters grass over the grassy ground, the same every time (it's seeded).
 func _build_grass() -> void:
-	if not ResourceLoader.exists(GRASS_MODEL):
-		return
-	var model: Node = (load(GRASS_MODEL) as PackedScene).instantiate()
-	var found := model.find_children("*", "MeshInstance3D", true, false)
-	var mesh: Mesh = (found[0] as MeshInstance3D).mesh if found else null
-	model.free()
-	if mesh == null:
-		return
-	# Ground taken up by the ruins, rocks, fallen trees and fountains, as boxes seen from above.
-	var bare: Array[Rect2] = []
 	var keep_off: Array[Node] = []
 	var ruins := get_node_or_null("Ruins")
 	if ruins:
 		keep_off.append(ruins)
 	var props := get_node_or_null("Props")
 	if props:
-		keep_off.append_array(props.get_children().filter(func(c: Node) -> bool: return BARE_PROPS.any(func(p: String) -> bool: return c.name.begins_with(p))))
-	for node in keep_off:
-		for g: GeometryInstance3D in node.find_children("*", "GeometryInstance3D", true, false):
-			var box: AABB = g.global_transform * g.get_aabb()
-			bare.append(Rect2(box.position.x, box.position.z, box.size.x, box.size.z).grow(-0.1))
-	var rng := RandomNumberGenerator.new()
-	rng.seed = SEED + 7
-	var chunks := {}  # chunk (x, z) -> the clumps' transforms
-	var n := int(GROUND_HALF * 2.0 / GRASS_SPACING)
-	for j in n:
-		for i in n:
-			var x := -GROUND_HALF + (i + rng.randf()) * GRASS_SPACING
-			var z := -GROUND_HALF + (j + rng.randf()) * GRASS_SPACING
-			var turn := rng.randf() * TAU
-			var size := rng.randf_range(GRASS_SIZE.x, GRASS_SIZE.y)
-			var h := height(x, z)
-			if not _is_grass(x, z, h) or bare.any(func(r: Rect2) -> bool: return r.has_point(Vector2(x, z))):
-				continue
-			var key := Vector2i(floori(x / GRASS_CHUNK), floori(z / GRASS_CHUNK))
-			if not chunks.has(key):
-				chunks[key] = []
-			chunks[key].append(Transform3D(Basis(Vector3.UP, turn).scaled(Vector3.ONE * size), Vector3(x, h - 0.02, z)))
-	var grass := Node3D.new()
-	grass.name = "Grass"
-	add_child(grass)
-	for key: Vector2i in chunks:
-		var clumps: Array = chunks[key]
-		var mm := MultiMesh.new()
-		mm.transform_format = MultiMesh.TRANSFORM_3D
-		mm.mesh = mesh
-		mm.instance_count = clumps.size()
-		for k in clumps.size():
-			mm.set_instance_transform(k, clumps[k])
-		var chunk := MultiMeshInstance3D.new()
-		chunk.multimesh = mm
-		chunk.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		chunk.visibility_range_end = GRASS_RANGE
-		chunk.visibility_range_end_margin = 5.0
-		chunk.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
-		grass.add_child(chunk)
+		keep_off.append_array(props.get_children().filter(func(c: Node) -> bool:
+			return BARE_PROPS.any(func(p: String) -> bool: return c.name.begins_with(p))))
+	var ground := func(x: float, z: float) -> float:
+		var h := height(x, z)
+		return h if _is_grass(x, z, h) else NAN
+	var grass := GrassField.build(Rect2(-GROUND_HALF, -GROUND_HALF, GROUND_HALF * 2.0, GROUND_HALF * 2.0),
+		SEED + 7, ground, GrassField.bare_under(keep_off))
+	if grass:
+		add_child(grass)
 
 
 func _build_sea() -> void:

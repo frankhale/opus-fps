@@ -5,15 +5,18 @@ extends Node3D
 ## `scene hub`. A wide, dead flat field of grass, painted like the other levels' grassy
 ## ground (FlatGround), with invisible walls round its edge so you can't walk off it. In
 ## it stand portals (scripts/portal.gd), each with the name of a level above it; walking
-## through one takes you there. The ground and walls are built here when the node enters
-## the tree (also in the editor); the portals and PlayerStart (where the player starts,
-## facing the way it faces) are ordinary nodes in the scene, to move or add to in the
-## editor.
+## through one takes you there. The field is carpeted with grass like the island's
+## (GrassField), kept off the portals. The ground, grass and walls are built here when
+## the node enters the tree (also in the editor); the portals and PlayerStart (where the
+## player starts, facing the way it faces) are ordinary nodes in the scene, to move or
+## add to in the editor.
 
 ## Half the width of the square field (m).
 const HALF_SIZE := 80.0
 ## Height of the invisible walls round it.
 const WALL_HEIGHT := 8.0
+## Seeds the grass's scatter, so it's the same every time.
+const GRASS_SEED := 31
 
 
 func _ready() -> void:
@@ -22,12 +25,21 @@ func _ready() -> void:
 		_place_player.call_deferred()  # once the world around it is ready
 
 
-## Builds the ground and walls (freeing any built before; the saved nodes stay).
+## Builds the ground, grass and walls (freeing any built before; the saved nodes stay).
 func build() -> void:
 	for c in get_children():
 		if c.owner == null:  # built here, not saved in the scene
 			c.free()
-	add_child(FlatGround.build(Rect2(-HALF_SIZE, -HALF_SIZE, HALF_SIZE * 2.0, HALF_SIZE * 2.0)))
+	var field := Rect2(-HALF_SIZE, -HALF_SIZE, HALF_SIZE * 2.0, HALF_SIZE * 2.0)
+	add_child(FlatGround.build(field))
+	var keep_off: Array[Node] = []
+	var portals := get_node_or_null("Portals")
+	if portals:
+		keep_off.append(portals)
+	var grass := GrassField.build(field, GRASS_SEED, func(_x: float, _z: float) -> float: return 0.0,
+		GrassField.bare_under(keep_off))
+	if grass:
+		add_child(grass)
 	var walls := StaticBody3D.new()
 	walls.name = "Walls"
 	for side in 4:
