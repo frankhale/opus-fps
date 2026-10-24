@@ -1,0 +1,13 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/enemies/butterfly.gd" id="1_047s7"]
+[ext_resource type="Script" path="res://scripts/editor_preview.gd" id="2_8ootp"]
+[ext_resource type="PackedScene" path="res://assets/enemies/enemy_butterfly.glb" id="3_r157j"]
+
+[node name="butterfly" type="CharacterBody3D" unique_id=1902702148]
+script = ExtResource("1_047s7")
+
+[node name="EditorPreview" type="Node3D" parent="." unique_id=280040846]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, 0)
+script = ExtResource("2_8ootp")
+model = ExtResource("3_r157j")

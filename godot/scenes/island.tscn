@@ -22,6 +22,7 @@
 [ext_resource type="PackedScene" path="res://prefabs/scenery/rock_mossy_pile.tscn" id="24_mossy"]
 [ext_resource type="PackedScene" path="res://prefabs/scenery/tree_fallen.tscn" id="25_tfall"]
 [ext_resource type="PackedScene" path="res://prefabs/scenery/fountain_rain.tscn" id="26_fount"]
+[ext_resource type="PackedScene" path="res://prefabs/creatures/butterfly.tscn" id="27_bfly"]
 [ext_resource type="PackedScene" path="res://prefabs/creatures/bat.tscn" id="25_bat"]
 
 [node name="Island" type="Node3D" unique_id=9614455]
@@ -287,6 +288,14 @@ wander_radius = 36.0
 
 [node name="Bat" parent="." unique_id=1311842207 instance=ExtResource("25_bat")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6.5, -22)
+floor_min = 0.0
+
+[node name="Butterfly" parent="." unique_id=1427783091 instance=ExtResource("27_bfly")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.5, 5.6, 14)
+floor_min = 0.0
+
+[node name="Butterfly2" parent="." unique_id=377112946 instance=ExtResource("27_bfly")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 3.5, 24)
 floor_min = 0.0
 
 [node name="PumpkinCrab" parent="." unique_id=1286540917 instance=ExtResource("23_pcrab")]

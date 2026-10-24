@@ -73,6 +73,11 @@ PALETTE_VARIANTS = {
     "fountain_rain": {"brass": "#B07A2C", "yellow": "#D8A64C", "orange": "#6E4518", "cyan": "#3CB4CC",
                       "sky": "#8CD8E6", "water": "#2490AC", "white": "#E6EAEC", "bone": "#D6CDBA",
                       "stone": "#5C6068", "lstone": "#7E828A", "dstone": "#383B42"},
+    # The monarch butterfly's wings: deep red-orange at the forewings' base ("red"), bright
+    # orange cells, yellow-orange toward the hindwings' edges, inky black veins and borders
+    # and cream-white spots.
+    "enemy_butterfly": {"red": "#B03C12", "orange": "#D2601C", "yellow": "#E8962E", "black": "#121212",
+                        "white": "#E6E2D8"},
 }
 
 
@@ -4894,6 +4899,124 @@ def fountain_rain(b):
             b.ico(0.02, 1, loc=fp + Vector((0, 0, 0.01)), color="yellow")
     for az in (40, 130, 250, 320):  # moss on the plinth
         sprout(out(az, 0.66, 0.6), 3, 0.12)
+
+
+@asset("enemies")
+def enemy_butterfly(b):
+    """A monarch butterfly, faces -Y, about 0.6 m across its spread wings (game size, not
+    life size) and 0.35 m long to the tips of its antennae, with its origin at the middle
+    of its body (hover it in game). Its body is black, speckled with white on the head and
+    thorax, with a long dark abdomen behind; two clubbed antennae sweep forward and up, and
+    six thin legs hang under it. The wings are spread nearly flat and raised a little:
+    long pointed forewings and rounded hindwings, orange cells between inky black veins,
+    deep red-orange at the forewings' base and yellow-orange toward the hindwings' edges,
+    framed by black borders set with a row of white spots, and a few orange spots in the
+    black near the forewings' tips. The wings are two-sided.
+
+    Rigged for a flying animation (rest pose as modeled, wings spread). Sides are its own:
+    l is +X.
+      body (root) > abdomen
+      body > wing_<side>_0 (the forewing), wing_<side>_1 (the hindwing)
+    Each wing is skinned whole to its bone, the abdomen to its own, the rest to the body."""
+    bm = b.bm
+    sides = {"l": 1, "r": -1}
+    fore_root, hind_root = Vector((0.02, -0.03, 0.015)), Vector((0.02, 0.0, 0.01))
+
+    def X(p, s):
+        return Vector((p[0] * s, p[1], p[2]))
+
+    # Skeleton (before any geometry: adding the weight layer invalidates vertices).
+    b.bone("body", (0, 0.02, 0), (0, -0.09, 0))
+    b.bone("abdomen", (0, 0.02, -0.005), (0, 0.17, -0.045), "body")
+    for side, s in sides.items():
+        b.bone(f"wing_{side}_0", X(fore_root, s), X((0.26, -0.11, 0.06), s), "body")
+        b.bone(f"wing_{side}_1", X(hind_root, s), X((0.15, 0.13, 0.04), s), "body")
+
+    def speckled(f):
+        return "white" if b.rng.random() < 0.14 else "black"
+
+    # Head, with big dark eyes, and the thorax, both black speckled with white.
+    b.ico(0.03, 1, loc=(0, -0.075, 0.0), color=speckled)
+    for s in sides.values():
+        b.ico(0.013, 1, loc=(0.022 * s, -0.088, 0.006), color="gunmetal")
+    b.ico(0.036, 1, loc=(0, -0.025, 0.0), scale=(0.9, 1.4, 0.95), color=speckled)
+    # The abdomen, banded dark grey and black.
+    m = len(bm.verts)
+    path = [(0, 0.015, -0.004), (0, 0.06, -0.012), (0, 0.1, -0.024), (0, 0.14, -0.036), (0, 0.175, -0.047),
+            (0, 0.185, -0.05)]
+    b.tube(path, [0.026, 0.028, 0.025, 0.02, 0.012, 0.0], seg=7,
+                   color=lambda f: "black" if int((f.calc_center_median().y + 0.01) / 0.022) % 2 else "dstone")
+    b.weigh([v for v in list(bm.verts)[m:] if v.is_valid], {"abdomen": 1.0})
+    for s in sides.values():
+        # Antennae with clubbed tips, and three pairs of thin legs.
+        tip = Vector((0.05 * s, -0.2, 0.085))
+        b.limb((0.01 * s, -0.095, 0.015), tip, 0.003, 0.003, 3, "black")
+        b.ico(0.008, 1, loc=tip, scale=(1, 1.6, 1), color="black")
+        for y in (-0.045, -0.025, -0.005):
+            knee = Vector((0.05 * s, y - 0.005, -0.045))
+            b.limb((0.012 * s, y, -0.02), knee, 0.005, 0.004, 3, "black")
+            b.limb(knee, (0.062 * s, y + 0.02, -0.095), 0.004, 0.003, 3, "black")
+
+    # The wings: a fan of faces from the root, columns of orange cells between narrow black
+    # veins, rings of cells out to a black border with a row of white spots.
+    def wing(side, s, root, outline, fore):
+        """outline: (angle, reach) round the root, the angle in degrees from straight out
+        (+X) toward the front, from the leading edge back to the trailing one."""
+        cells = 6
+        stops = []  # (fraction across the fan, column: None for a vein, else 0-2 across a cell)
+        for k in range(cells):
+            stops += [(k + 0.0, None), (k + 0.18, 0), (k + 0.45, 1), (k + 0.73, 2)]
+        stops.append((cells, None))
+        a0, a1 = outline[0][0], outline[-1][0]
+        rings = [0.04, 0.16, 0.48, 0.54, 0.76, 0.84, 0.93, 1.0]
+
+        def reach(a):
+            for (x0, r0), (x1, r1) in zip(outline, outline[1:]):
+                if x1 <= a <= x0:
+                    return r0 + (r1 - r0) * (x0 - a) / (x0 - x1)
+            return outline[-1][1]
+
+        def color(col, ring):
+            k, sub = int(stops[col][0]), stops[col][1]
+            vein = sub is None
+            edge = fore and k == 0 and sub == 0  # the forewing's black leading edge
+            if ring == 0 or ring >= 4 or vein or edge:
+                if ring == 5 and sub == 1:
+                    return "white"  # the row of spots in the border
+                if ring == 6 and vein and k % 2:
+                    return "white"  # smaller spots between them, at the very edge
+                if fore and ring == 4 and sub == 1 and k in (1, 2):
+                    return "yellow"  # orange spots in the black by the tip
+                return "black"
+            if ring == 2:
+                return "black" if fore else "orange"  # the crossvein closing the forewing's cells
+            if fore:
+                return "red" if ring == 1 else "orange"
+            return "orange" if ring == 1 else "yellow"
+
+        for sgn in (1, -1):
+            grid = []
+            for t, _ in stops:
+                a = math.radians(a0 + (a1 - a0) * t / cells)
+                r = reach(math.degrees(a))
+                col = []
+                for f in rings:
+                    d = r * f
+                    p = root + X((math.cos(a) * d, -math.sin(a) * d, d * math.tan(math.radians(10)) + 0.0015 * sgn), s)
+                    col.append(bm.verts.new(p))
+                grid.append(col)
+            for i in range(len(stops) - 1):
+                for j in range(len(rings) - 1):
+                    q = (grid[i][j], grid[i + 1][j], grid[i + 1][j + 1], grid[i][j + 1])
+                    f = bm.faces.new(q if (sgn > 0) == (s > 0) else q[::-1])
+                    f[b.pal] = IDX[color(i, j)]
+            b.weigh([v for col in grid for v in col], {f"wing_{side}_{0 if fore else 1}": 1.0})
+
+    for side, s in sides.items():
+        wing(side, s, fore_root, [(34, 0.27), (26, 0.31), (14, 0.31), (2, 0.28), (-14, 0.22), (-30, 0.16),
+                                  (-44, 0.11), (-56, 0.08)], True)
+        wing(side, s, hind_root, [(8, 0.12), (-4, 0.17), (-22, 0.2), (-42, 0.21), (-62, 0.2), (-80, 0.16),
+                                  (-95, 0.12), (-106, 0.08)], False)
 
 
 # ---------------------------------------------------------------------------

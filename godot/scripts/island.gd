@@ -25,13 +25,14 @@ extends Node3D
 ## broken walls and columns under Ruins (move the group to move the whole site); the
 ## creatures (the shadow cat roams the island, the lynx ranger and a dachshund potter
 ## about on it, the arcane eye and a jellyfish float over it, a pair of lovebirds
-## fly about over it, perching on things, a bat flits about over the back of it, and a
+## fly about over it, perching on things, a bat flits about over the back of it,
+## butterflies flutter about the fountain and the meadow, settling on things, and a
 ## pumpkin crab scuttles about the beach along from where the player starts); and
-## PlayerStart, where
-## the player starts and comes back after dying. They're instances of the prefab library
-## (res://prefabs/), so the creatures show their models in the editor. The ground is
-## levelled round wherever Ruins stands, and the group settles onto that level; after
-## moving it, press Rebuild ground in the Inspector (or reopen the scene) to re-level it.
+## PlayerStart, where the player starts and comes back after dying. They're instances
+## of the prefab library (res://prefabs/), so the creatures show their models in the
+## editor. The ground is levelled round wherever Ruins stands, and the group settles
+## onto that level; after moving it, press Rebuild ground in the Inspector (or reopen
+## the scene) to re-level it.
 
 const SEED := 2024
 ## Mean distance from the middle to the waterline, and how far it wanders either way.
@@ -390,7 +391,7 @@ func _build_walls() -> void:
 func _keep_on_island(creature: Node) -> void:
 	if creature is Jellyfish:
 		creature.can_hover = func(p: Vector3) -> bool: return inland(p.x, p.z) > -JELLY_OFFSHORE
-	elif creature is ArcaneEye or creature is Lovebird or creature is Bat:
+	elif creature is ArcaneEye or creature is Lovebird or creature is Bat or creature is Butterfly:
 		creature.can_hover = func(p: Vector3) -> bool: return inland(p.x, p.z) > 0.0
 	elif creature is PumpkinCrab:
 		creature.can_stand = func(p: Vector3) -> bool:
