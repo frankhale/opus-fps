@@ -4171,6 +4171,126 @@ def grass_patch(b):
             upper[b.pal] = IDX[b._resolve(dry if withered else tip, upper)]
 
 
+@asset("scenery")
+def rock_mossy_pile(b):
+    """A heap of mossy boulders, about 3.4 m across and 2.9 m tall to the tips of its
+    leaves: big grey stones, rounded blocks chiselled into flat facets, stacked in three
+    tiers under a crowning stone split in two, with rounded cobbles packed round the
+    foot. Olive-green moss cushions every upward face and creeps over the upper edges, and
+    broad green leaves sprout from the top and from the crevices between stones."""
+    stone = {"stone": 5, "lstone": 2, "dstone": 1}
+    moss = {"olive": 3, "grass": 2, "lgrass": 1}  # as on the ruins gate
+    bm = b.bm
+
+    def boulder(c, size, rot=(0, 0, 0), facets=6, subdiv=2, squareness=3.5, cut=(0.36, 0.46)):
+        """A boulder of about `size` (x, y, z) centered at c: a rounded block (the higher
+        `squareness`, the boxier) chiselled into flat facets by `facets` random planes.
+        Faces looking up turn to moss, and it creeps over the upper edges."""
+        verts = bmesh.ops.create_icosphere(bm, subdivisions=subdiv, radius=1.0)["verts"]
+        for v in verts:
+            u = v.co.normalized()
+            k = sum(abs(x) ** squareness for x in u) ** (1.0 / squareness)
+            v.co = u * 0.5 / k
+        for _ in range(facets):
+            n = Vector((b.rng.uniform(-1, 1), b.rng.uniform(-1, 1), b.rng.uniform(-0.4, 1))).normalized()
+            reach = b.rng.uniform(*cut)
+            for v in verts:
+                d = v.co.dot(n)
+                if d > reach:
+                    v.co -= n * (d - reach)
+        m = b.P @ M(c, rot, size)
+        for v in verts:
+            v.co = m @ (v.co + Vector(tuple(b.rng.uniform(-0.012, 0.012) for _ in range(3))))
+            v.co.z = max(v.co.z, 0.0)
+        top = max(v.co.z for v in verts)
+        bottom = min(v.co.z for v in verts)
+        salt = b.rng.random()
+
+        def color(f):
+            nz = f.normal.z
+            h = (f.calc_center_median().z - bottom) / max(top - bottom, 1e-3)
+            if nz > 0.6:
+                pick = moss
+            elif nz > 0.25 and h > 0.55:
+                pick = {"olive": 2, "grass": 1, "dgrass": 1}
+            elif nz > -0.1 and h > 0.75:
+                pick = {"lgrass": 1, "grass": 1, "stone": 3}
+            elif nz < -0.3:
+                pick = {"dstone": 3, "stone": 1}
+            else:
+                pick = stone
+            # Faces of one flat facet share a color, so each facet reads as one chiselled face.
+            r = random.Random(hash((salt, round(f.normal.x * 4), round(f.normal.y * 4), round(f.normal.z * 4))))
+            return r.choices(list(pick), weights=list(pick.values()))[0]
+        b.paint(verts, color)
+        return verts
+
+    def leaf(base, direction, length, width, color):
+        """A broad pointed leaf, folded a little along its midrib, two-sided."""
+        d = Vector(direction).normalized()
+        side = d.cross(Vector((0, 0, 1)))
+        if side.length < 1e-3:
+            side = Vector((1, 0, 0))
+        side.normalize()
+        up = side.cross(d).normalized()
+        base = Vector(base)
+        mid = base + d * length * 0.45
+        tip = base + d * length - up * length * 0.12  # the tip droops
+        pts = [base, mid + side * width / 2 - up * width * 0.12, tip, mid - side * width / 2 - up * width * 0.12,
+               mid + up * width * 0.06]
+        nrm = up * 0.003
+        for sgn in (1, -1):
+            vs = [bm.verts.new(b.P @ (q + nrm * sgn)) for q in pts]
+            tris = ((0, 1, 4), (4, 1, 2), (0, 4, 3), (4, 2, 3))
+            for t in tris:
+                f = bm.faces.new([vs[i] for i in (t if sgn > 0 else t[::-1])])
+                f[b.pal] = IDX[b._resolve(color, f)]
+
+    def sprout(at, count, length, spread=(25, 70), droop=0.0):
+        """A tuft of leaves fanning out and up from one spot."""
+        a0 = b.rng.uniform(0, 2 * math.pi)
+        for k in range(count):
+            a = a0 + 2 * math.pi * (k + b.rng.uniform(-0.25, 0.25)) / count
+            tilt = math.radians(b.rng.uniform(*spread))
+            d = Vector((math.cos(a) * math.sin(tilt), math.sin(a) * math.sin(tilt), math.cos(tilt) - droop))
+            ln = length * b.rng.uniform(0.75, 1.15)
+            leaf(at, d, ln, ln * b.rng.uniform(0.6, 0.75), {"lgrass": 2, "grass": 1})
+
+    # Bottom tier: a big boulder in front, split down the middle, flanked by lower
+    # ones, and broad stones behind them that the upper tiers rest on.
+    boulder((-0.12, -0.4, 0.55), (0.78, 1.05, 1.1), rot=(0, 6, 8))
+    boulder((0.5, -0.36, 0.52), (0.78, 1.0, 1.05), rot=(0, -5, 14))
+    boulder((-0.9, -0.15, 0.45), (0.95, 1.0, 0.95), rot=(0, -6, -20))
+    boulder((1.05, -0.05, 0.42), (0.85, 0.95, 0.9), rot=(4, 0, 30))
+    boulder((-0.15, 0.45, 0.5), (2.0, 1.1, 1.0), rot=(0, 0, -8), facets=8)
+    boulder((1.0, 0.6, 0.4), (0.9, 0.9, 0.8), rot=(0, 0, 50))
+    boulder((-1.0, 0.6, 0.4), (0.85, 0.85, 0.8), rot=(0, 0, -35))
+
+    # Middle tier: a block on the left and a tall one on the right.
+    boulder((-0.5, -0.02, 1.25), (0.95, 0.9, 0.95), rot=(0, 6, 15))
+    boulder((0.55, 0.12, 1.3), (0.95, 0.9, 1.1), rot=(0, -8, -10))
+    boulder((-0.8, 0.5, 1.2), (0.7, 0.7, 0.85), rot=(0, 0, 40))
+
+    # The crowning stone on top, split in two.
+    boulder((-0.25, 0.22, 1.95), (0.55, 0.85, 0.85), rot=(0, 5, 25))
+    boulder((0.22, 0.32, 1.92), (0.5, 0.8, 0.8), rot=(0, -4, 25))
+
+    # Rounded cobbles packed round the foot.
+    for x, y, r in ((-0.55, -0.95, 0.45), (-0.05, -1.02, 0.38), (0.45, -0.98, 0.36), (0.95, -0.72, 0.34),
+                    (-1.15, -0.6, 0.38), (1.4, -0.35, 0.34), (1.45, 0.25, 0.32), (-1.45, 0.15, 0.36),
+                    (-1.25, 0.85, 0.32), (0.3, 1.0, 0.34)):
+        r *= b.rng.uniform(0.9, 1.1)
+        boulder((x, y, r * 0.38), (r * 1.3, r * 1.1, r * 0.95), rot=(0, 0, b.rng.uniform(0, 90)),
+                facets=3, subdiv=1, squareness=2.6, cut=(0.42, 0.48))
+
+    # Leaves: a big tuft crowning the top, and smaller ones from the crevices.
+    sprout((0.0, 0.27, 2.3), 9, 0.6, spread=(10, 60))
+    for at, n, ln in (((-1.15, -0.55, 0.6), 5, 0.42), ((1.0, -0.45, 0.72), 4, 0.36), ((0.95, 0.05, 1.75), 5, 0.36),
+                      ((-1.0, 0.1, 1.5), 4, 0.32), ((0.2, -0.95, 0.3), 3, 0.28), ((1.45, -0.05, 0.5), 4, 0.34),
+                      ((-0.1, -0.5, 1.12), 4, 0.3), ((-1.5, -0.2, 0.3), 3, 0.28), ((-0.55, -0.6, 1.62), 3, 0.26)):
+        sprout(at, n, ln, spread=(45, 85), droop=0.15)
+
+
 # ---------------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------------

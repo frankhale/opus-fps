@@ -1,0 +1,5 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://assets/scenery/rock_mossy_pile.glb" id="model"]
+
+[node name="rock_mossy_pile" instance=ExtResource("model")]
