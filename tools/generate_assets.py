@@ -78,6 +78,12 @@ PALETTE_VARIANTS = {
     # and cream-white spots.
     "enemy_butterfly": {"red": "#B03C12", "orange": "#D2601C", "yellow": "#E8962E", "black": "#121212",
                         "white": "#E6E2D8"},
+    # The belfry house's warm white plaster, sandstone quoins and window frames ("lsand",
+    # shaded "sand"), terracotta roof tiles ("orange", dark "roof", light "yellow"), the
+    # orange brick showing through the plaster ("flesh") and weathered wood.
+    "house_belfry": {"white": "#E4D8C6", "lsand": "#C8B294", "sand": "#A08A70", "orange": "#C25A26",
+                     "roof": "#9A4420", "yellow": "#D6743A", "flesh": "#BE6038", "wood": "#6C4A32",
+                     "lwood": "#8E6C4E", "dbark": "#3C2A1E", "black": "#1C1714"},
 }
 
 
@@ -5017,6 +5023,162 @@ def enemy_butterfly(b):
                                   (-44, 0.11), (-56, 0.08)], True)
         wing(side, s, hind_root, [(8, 0.12), (-4, 0.17), (-22, 0.2), (-42, 0.21), (-62, 0.2), (-80, 0.16),
                                   (-95, 0.12), (-106, 0.08)], False)
+
+
+@asset("scenery")
+def house_belfry(b):
+    """A white plastered house with a steep terracotta roof and a little belfry on its
+    ridge, about 8.9 x 6.9 m and 10.2 m tall to the belfry's spike, its front (a gable
+    end with the door) toward -Y. The house is 5 x 6 m with walls 4.2 m high and a roof
+    pitched at about 54 degrees, its ridge running front to back; warm white plaster with
+    sandstone quoins up the corners, orange brick showing through where the plaster has
+    flaked, and small windows in sandstone frames. Both gable ends have a plank door in a
+    dark wooden frame. The roof is rows of overlapping clay tiles in mixed terracotta
+    shades over dark bargeboards, with a ridge cap. The belfry, toward the back of the
+    ridge, is a plastered base with four sandstone posts round a bronze bell under a
+    tiled pyramid roof and an iron spike. A lean-to shed against the -X side has a tiled
+    roof sloping away from the house, a front of vertical boards with a hinged plank door,
+    and plastered sides with small windows."""
+    W, D, H = 2.5, 3.0, 4.2  # the house's half width (X), half depth (Y) and wall height
+    RIDGE = H + 3.4
+    pitch = math.atan2(RIDGE - H, W)
+    plaster = "white"
+    stone = {"lsand": 3, "sand": 1}
+    tile = {"orange": 6, "yellow": 2, "roof": 1}
+    planks = ("wood", "lwood")
+
+    # Faces of the walls: (origin, turn) for a frame whose local X runs along the wall
+    # and local -Y points out of it.
+    faces = {"front": ((0, -D, 0), (0, 0, 0)), "back": ((0, D, 0), (0, 0, 180)), "right": ((W, 0, 0), (0, 0, 90)),
+             "left": ((-W, 0, 0), (0, 0, -90))}
+
+    def window(u, z, w, h):
+        """A small window in a sandstone frame: dark glass behind a wooden cross."""
+        b.box((w + 0.2, 0.1, 0.14), (u, -0.05, z + h / 2 + 0.07), color=stone)
+        b.box((w + 0.28, 0.14, 0.12), (u, -0.07, z - h / 2 - 0.06), color=stone)
+        for x in (u - w / 2 - 0.06, u + w / 2 + 0.06):
+            b.box((0.12, 0.1, h), (x, -0.05, z), color=stone)
+        b.box((w, 0.04, h), (u, -0.015, z), color="black")
+        b.box((0.04, 0.06, h), (u, -0.03, z), color="dbark")
+        b.box((w, 0.06, 0.04), (u, -0.03, z + h * 0.15), color="dbark")
+
+    def door(u, w, h, hinges=False):
+        """A plank door in a dark wooden frame, with an iron ring (or strap hinges)."""
+        b.box((w + 0.26, 0.12, 0.14), (u, -0.06, h + 0.07), color="dbark")
+        for x in (u - w / 2 - 0.07, u + w / 2 + 0.07):
+            b.box((0.14, 0.12, h + 0.14), (x, -0.06, h / 2), color="dbark")
+        n = 4
+        for k in range(n):
+            b.box((w / n - 0.012, 0.06, h), (u - w / 2 + (k + 0.5) * w / n, -0.03, h / 2), color=planks[k % 2])
+        if hinges:
+            for z in (0.35, h - 0.35):
+                b.box((w * 0.55, 0.03, 0.06), (u - w * 0.2, -0.075, z), color="gunmetal")
+        else:
+            b.ring(0.06, 0.015, seg=6, loc=(u + w * 0.3, -0.075, h * 0.5), rot=(90, 0, 0), color="gunmetal")
+
+    def bricks(u, z, rows):
+        """Orange brick showing through flaked plaster: a few staggered courses."""
+        for r, (off, n) in enumerate(rows):
+            for k in range(n):
+                b.box((0.26, 0.025, 0.11), (u + off + k * 0.28, -0.01, z + r * 0.135), color={"flesh": 3, "orange": 1})
+
+    # The walls, gables and a sandstone foundation strip.
+    b.box((W * 2, D * 2, H), (0, 0, H / 2), color=plaster)
+    b.prism(W * 2, D * 2, RIDGE - H, loc=(0, 0, H), color=plaster)
+    b.box((W * 2 + 0.1, D * 2 + 0.1, 0.25), (0, 0, 0.12), color=stone)
+    # Sandstone quoins up each corner, long and short blocks alternating between the faces.
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            if sx < 0 and sy > 0:
+                continue  # inside the lean-to
+            for k in range(int((H - 0.3) / 0.33)):
+                z = 0.42 + k * 0.33
+                lx, ly = (0.55, 0.32) if k % 2 else (0.32, 0.55)
+                b.box((lx, 0.06, 0.27), (sx * (W - lx / 2 + 0.03), sy * (D + 0.03), z), color=stone)
+                b.box((0.06, ly, 0.27), (sx * (W + 0.03), sy * (D - ly / 2 + 0.03), z), color=stone)
+
+    for name in ("front", "back"):
+        with b.at(*faces[name]):
+            door(0, 1.3, 2.25)
+            window(-1.5, 1.45, 0.42, 0.42)
+            window(1.5, 1.45, 0.42, 0.42)
+            window(0, 3.55, 0.36, 0.62)
+            window(0, 5.35, 0.52, 0.72)
+            bricks(-2.15, 0.6, [(0, 2), (0.14, 2), (0, 1)])
+            bricks(1.55, 2.7, [(0, 2), (-0.14, 3), (0.14, 1)])
+            bricks(-1.2, 5.0, [(0, 2), (0.14, 1)])
+            bricks(1.85, 0.35, [(0, 1), (-0.14, 2)])
+            bricks(-1.9, 3.6, [(0.14, 1), (0, 2)])
+            bricks(0.7, 6.3, [(0, 2), (-0.14, 1)])
+            for k in (1, 2):  # little brackets under the bargeboards
+                x = W * (1 - k / 3)
+                for sx in (-1, 1):
+                    b.box((0.12, 0.2, 0.14), (sx * x, -0.1, H + (RIDGE - H) * k / 3 - 0.12), color="dbark")
+    with b.at(*faces["right"]):
+        window(-1.2, 1.7, 0.42, 0.7)
+        window(1.4, 1.7, 0.42, 0.7)
+        bricks(0.2, 0.5, [(0, 2), (0.11, 2)])
+        bricks(-2.2, 3.2, [(0, 1), (0.11, 2), (0, 1)])
+
+    # The roof: rows of overlapping clay tiles, each row tipped a little steeper than the
+    # roof so its lower edge stands proud of the row below, over a dark board.
+    def roof(ridge, s, angle, run, y0, y1):
+        """One slope from `ridge` (x, z) down toward s * X, `run` out across the ground."""
+        rx, rz = ridge
+        dirn = Vector((s * math.cos(angle), 0, -math.sin(angle)))
+        nrm = Vector((s * math.sin(angle), 0, math.cos(angle)))
+        length = run / math.cos(angle)
+        deg = math.degrees(angle)
+        base = Vector((rx, 0, rz))
+        b.box((length, y1 - y0, 0.05), base + dirn * length / 2 + Vector((0, (y0 + y1) / 2, 0)),
+              rot=(0, s * deg, 0), color="dbark")
+        k, t = 0, 0.2
+        while t < length:
+            stagger = 0.25 if k % 2 else 0.0
+            y = y0 + stagger
+            while y < y1 - 0.05:
+                w = min(0.5, y1 - y)
+                c = base + dirn * t + nrm * 0.07 + Vector((0, y + w / 2, 0))
+                b.box((0.46, w - 0.03, 0.07), c, rot=(b.rng.uniform(-1.5, 1.5), s * (deg + 6), 0), color=tile)
+                y += 0.5
+            k, t = k + 1, t + 0.4
+
+    for s in (-1, 1):
+        roof((0, RIDGE), s, pitch, W + 0.4, -D - 0.4, D + 0.4)
+        for y in (-D - 0.38, D + 0.38):  # bargeboards along the gables
+            b.beam((s * (W + 0.4), y, H - 0.4 * math.tan(pitch) + 0.02), (0, y, RIDGE + 0.04), 0.12, 0.24,
+                   color="dbark")
+    b.cyl(0.15, 0.15, D * 2 + 0.8, seg=6, loc=(0, 0, RIDGE + 0.12), rot=(90, 0, 0), color={"roof": 2, "orange": 1})
+
+    # The belfry, toward the back of the ridge.
+    by = 1.4
+    b.box((0.8, 0.8, 1.2), (0, by, RIDGE + 0.05), color=plaster)
+    b.box((0.92, 0.92, 0.12), (0, by, RIDGE + 0.7), color=stone)
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            b.box((0.16, 0.16, 0.62), (sx * 0.34, by + sy * 0.34, RIDGE + 1.07), color=stone)
+    b.box((0.94, 0.94, 0.14), (0, by, RIDGE + 1.45), color=stone)
+    b.lathe([(0.0, 1.32), (0.09, 1.3), (0.13, 1.15), (0.17, 1.0)], seg=8, loc=(0, by, RIDGE), color="brass")
+    b.cyl(0.74, 0.0, 0.78, seg=4, loc=(0, by, RIDGE + 1.91), rot=(0, 0, 45), color=tile)
+    b.limb((0, by, RIDGE + 2.2), (0, by, RIDGE + 2.62), 0.025, 0.012, 4, "gunmetal")
+
+    # The lean-to against the -X side: plastered, with a board front and a door.
+    LX, LY0, LY1, LO, LH = -W - 2.5, -2.0, 2.6, 2.15, 3.45  # outer x, front, back, eave and top heights
+    b.slab([(LX, 0), (-W, 0), (-W, LH), (LX, LO)], LY1 - LY0, loc=(0, (LY0 + LY1) / 2, 0), color=plaster)
+    b.box((2.6, LY1 - LY0 + 0.1, 0.22), (LX + 1.25, (LY0 + LY1) / 2, 0.11), color=stone)
+    x = LX
+    k = 0
+    while x < -W - 0.05:
+        h = LO + (x + 0.1 - LX) * (LH - LO) / (-W - LX)
+        b.box((0.19, 0.05, h), (x + 0.1, LY0 - 0.025, h / 2), color=planks[k % 2] if b.rng.random() < 0.7 else "wood")
+        x, k = x + 0.21, k + 1
+    with b.at((0, LY0 - 0.05, 0), (0, 0, 0)):
+        door(-3.55, 0.9, 1.85, hinges=True)
+    with b.at((0, LY1, 0), (0, 0, 180)):
+        window(3.8, 1.45, 0.42, 0.5)
+    with b.at((LX, 0, 0), (0, 0, -90)):
+        window(-0.6, 1.4, 0.36, 0.42)
+    roof((-W, LH + 0.02), -1, math.atan2(LH - LO, -W - LX), -W - LX + 0.35, LY0 - 0.35, LY1 + 0.3)
 
 
 # ---------------------------------------------------------------------------

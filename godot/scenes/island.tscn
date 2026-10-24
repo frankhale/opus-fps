@@ -23,6 +23,7 @@
 [ext_resource type="PackedScene" path="res://prefabs/scenery/tree_fallen.tscn" id="25_tfall"]
 [ext_resource type="PackedScene" path="res://prefabs/scenery/fountain_rain.tscn" id="26_fount"]
 [ext_resource type="PackedScene" path="res://prefabs/creatures/butterfly.tscn" id="27_bfly"]
+[ext_resource type="PackedScene" path="res://prefabs/scenery/house_belfry.tscn" id="28_house"]
 [ext_resource type="PackedScene" path="res://prefabs/creatures/bat.tscn" id="25_bat"]
 
 [node name="Island" type="Node3D" unique_id=9614455]
@@ -101,6 +102,9 @@ transform = Transform3D(0.16507867, 0, 1.4460319, 0, 1.4554241, 0, -1.4460319, 0
 
 [node name="rock_mossy_pile_0" parent="Props" unique_id=1577203914 instance=ExtResource("24_mossy")]
 transform = Transform3D(-0.798636, 0, 0.601815, 0, 1, 0, -0.601815, 0, -0.798636, 3.834991, 4.1207604, 15.058777)
+
+[node name="house_belfry_0" parent="Props" unique_id=1196427805 instance=ExtResource("28_house")]
+transform = Transform3D(0.939693, 0, 0.34202, 0, 1, 0, -0.34202, 0, 0.939693, -3, 3.1, -4)
 
 [node name="fountain_rain_0" parent="Props" unique_id=702615394 instance=ExtResource("26_fount")]
 transform = Transform3D(0.965926, 0, 0.258819, 0, 1, 0, -0.258819, 0, 0.965926, -8, 4.23, 12)

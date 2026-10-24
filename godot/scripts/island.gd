@@ -30,9 +30,9 @@ extends Node3D
 ## pumpkin crab scuttles about the beach along from where the player starts); and
 ## PlayerStart, where the player starts and comes back after dying. They're instances
 ## of the prefab library (res://prefabs/), so the creatures show their models in the
-## editor. The ground is levelled round wherever Ruins stands, and the group settles
-## onto that level; after moving it, press Rebuild ground in the Inspector (or reopen
-## the scene) to re-level it.
+## editor. The ground is levelled round wherever Ruins stands, and round each house
+## under Props, and they settle onto that level; after moving one, press Rebuild ground
+## in the Inspector (or reopen the scene) to re-level it.
 
 const SEED := 2024
 ## Mean distance from the middle to the waterline, and how far it wanders either way.
@@ -70,14 +70,18 @@ const GROUND_MATERIAL := preload("res://materials/ps1_palette.tres")
 const SEA_SHADER := preload("res://materials/sea.gdshader")
 const SURF_SOUND := "res://assets/sfx/surf_loop.wav"
 ## Grass (GrassField) grows on the grassy ground, but not under the ruins (their paving
-## and walls) or the props named here: the rocks, fallen trees and fountains.
-const BARE_PROPS := ["rock", "tree_fallen", "fountain"]
+## and walls) or the props named here: the rocks, fallen trees, fountains and houses.
+const BARE_PROPS := ["rock", "tree_fallen", "fountain", "house"]
 
 ## The ground is levelled for the ruins (the Ruins node), to the natural ground's height
 ## at the group's origin, out to RUIN_FLAT meters round it, blending back into the hills
 ## by RUIN_BLEND.
 const RUIN_FLAT := 8.0
 const RUIN_BLEND := 14.0
+## Likewise for each house (props named "house..."), out to HOUSE_FLAT meters, blending
+## back by HOUSE_BLEND, and the house set on its level.
+const HOUSE_FLAT := 5.5
+const HOUSE_BLEND := 9.0
 ## How far the walking creatures keep from the water, and how far past the waterline
 ## the jellyfish may swim out over the shallows (meters).
 const CAT_SHORE := 3.0
@@ -89,17 +93,15 @@ const CRAB_SHORE := 1.5
 const CRAB_INLAND := 14.0
 const JELLY_OFFSHORE := 6.0
 
-## Inspector button: rebuilds the ground (and so re-levels it round the ruins).
+## Inspector button: rebuilds the ground (and so re-levels it round the ruins and houses).
 @export_tool_button("Rebuild ground", "Reload") var rebuild_ground := build
 
 var _coast := []  # [harmonic, amplitude, phase] for the coastline's wander
 var _noise: FastNoiseLite
 var _hills: FastNoiseLite
-## The ruins' site and the level the ground is flattened to round it (no levelling
-## without a Ruins node).
-var _ruin_at := Vector2.ZERO
-var _ruin_level := 0.0
-var _levelled := false
+## The levelled sites (the ruins and the houses): [where (x, z), the level the ground is
+## flattened to there, how far out it's flat, how far out it blends back].
+var _sites := []
 
 
 func _ready() -> void:
@@ -109,19 +111,22 @@ func _ready() -> void:
 
 
 ## Builds the ground, sea and walls (freeing any built before; the saved nodes stay), sets
-## the ruins on their levelled ground, and in the game keeps the creatures to where they
-## may go.
+## the ruins and houses on their levelled ground, and in the game keeps the creatures to
+## where they may go.
 func build() -> void:
 	for c in get_children():
 		if c.owner == null:  # built here, not saved in the scene
 			c.free()
 	_setup_noise()
+	_sites.clear()
 	var ruins := get_node_or_null("Ruins") as Node3D
-	_levelled = ruins != null
 	if ruins:
-		_ruin_at = Vector2(ruins.position.x, ruins.position.z)
-		_ruin_level = _natural_height(ruins.position.x, ruins.position.z)
-		ruins.position.y = _ruin_level
+		_level_site(ruins, RUIN_FLAT, RUIN_BLEND)
+	var props := get_node_or_null("Props")
+	if props:
+		for c in props.get_children():
+			if c is Node3D and c.name.begins_with("house"):
+				_level_site(c, HOUSE_FLAT, HOUSE_BLEND)
 	_build_ground()
 	_build_grass()
 	_build_sea()
@@ -178,10 +183,20 @@ func inland(x: float, z: float) -> float:
 ## levelled round the ruins.
 func height(x: float, z: float) -> float:
 	var h := _natural_height(x, z)
-	var d := Vector2(x, z).distance_to(_ruin_at)
-	if _levelled and d < RUIN_BLEND:
-		h = lerpf(h, _ruin_level, smoothstep(RUIN_BLEND, RUIN_FLAT, d))
+	for site: Array in _sites:
+		var d := Vector2(x, z).distance_to(site[0])
+		if d < site[3]:
+			h = lerpf(h, site[1], smoothstep(site[3], site[2], d))
 	return h
+
+
+## Flattens the ground round `node` (to the natural ground's height under it) and sets it
+## on that level.
+func _level_site(node: Node3D, flat: float, blend: float) -> void:
+	var at := Vector2(node.position.x, node.position.z)
+	var level := _natural_height(at.x, at.y)
+	_sites.append([at, level, flat, blend])
+	node.position.y = level
 
 
 func _natural_height(x: float, z: float) -> float:
